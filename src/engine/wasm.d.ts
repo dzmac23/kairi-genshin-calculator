@@ -3,6 +3,8 @@
 
 declare class Go {
   importObject: WebAssembly.Imports;
+  /** Set by wasm_exec.js when the Go program stops, e.g. after running out of memory. */
+  exited: boolean;
   run(instance: WebAssembly.Instance): Promise<void>;
 }
 

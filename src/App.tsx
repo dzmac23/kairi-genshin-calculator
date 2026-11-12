@@ -1,20 +1,25 @@
 import { useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import EngineCheck from './EngineCheck';
+import HomeScreen from './screens/HomeScreen';
+import RunScreen from './screens/RunScreen';
+import { useSimulation } from './useSimulation';
 
 const screens = ['Home', 'Team', 'Rotation', 'Run', 'Results', 'History'] as const;
 type Screen = (typeof screens)[number];
 
-const comingSoon: Record<Exclude<Screen, 'Home'>, string> = {
+const comingSoon: Partial<Record<Screen, string>> = {
   Team: 'Four slots with character, weapon, artifact pickers and stat totals.',
   Rotation: 'Community rotation notation with a live gcsim translation preview.',
-  Run: 'Validate and simulate with progress and cancel.',
   Results: 'Team DPS, per-character breakdown, damage sources, reactions and warnings.',
   History: 'Every run saved on this device, with export and import.',
 };
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('Home');
+  // Kept here, above the screens, so a run keeps going when you switch tabs.
+  const simulation = useSimulation();
+  const running = simulation.state.phase === 'starting' || simulation.state.phase === 'running';
+
   // Shows a button when a new version of the app has been downloaded in the background.
   const {
     needRefresh: [needRefresh],
@@ -30,8 +35,10 @@ export default function App() {
 
       {needRefresh && (
         <div className="banner">
-          A new version is ready.
-          <button onClick={() => updateServiceWorker(true)}>Update</button>
+          {running ? 'A new version is ready. Update after this run.' : 'A new version is ready.'}
+          <button onClick={() => updateServiceWorker(true)} disabled={running}>
+            Update
+          </button>
         </div>
       )}
       {offlineReady && (
@@ -42,17 +49,11 @@ export default function App() {
       )}
 
       <main className="content">
-        {screen === 'Home' ? (
-          <>
-            <section className="card">
-              <h2>Welcome</h2>
-              <p>
-                This app runs real gcsim simulations on your device. It is being built step by step. The other tabs are placeholders for now.
-              </p>
-            </section>
-            <EngineCheck />
-          </>
-        ) : (
+        {screen === 'Home' && <HomeScreen onStart={() => setScreen('Run')} />}
+        {screen === 'Run' && (
+          <RunScreen state={simulation.state} onRun={simulation.run} onCancel={simulation.cancel} />
+        )}
+        {comingSoon[screen] && (
           <section className="card">
             <h2>{screen}</h2>
             <p className="muted">Coming soon: {comingSoon[screen]}</p>
@@ -64,6 +65,7 @@ export default function App() {
         {screens.map((s) => (
           <button key={s} className={s === screen ? 'active' : ''} onClick={() => setScreen(s)}>
             {s}
+            {s === 'Run' && running && <span className="dot" aria-label="running" />}
           </button>
         ))}
       </nav>
