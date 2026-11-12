@@ -1,0 +1,77 @@
+# Builds gcsim's browser engine (main.wasm + wasm_exec.js) and checks that it works.
+#
+# gcsim does not publish its WebAssembly build as a release file, so we compile it here
+# from the version pinned in gcsim-version.txt. The result is uploaded as an artifact
+# named "gcsim-engine", which deploy.yml puts into the app.
+#
+# Run it by hand from the Actions tab ("Run workflow"), or let deploy.yml call it.
+name: Build gcsim engine
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+
+      - name: Read pinned gcsim version
+        id: pin
+        run: echo "tag=$(tr -d '[:space:]' < gcsim-version.txt)" >> "$GITHUB_OUTPUT"
+
+      # The engine only changes when the gcsim version or the build script changes,
+      # so reuse a previous build when both are the same.
+      - name: Reuse a previous build if possible
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: public/gcsim
+          key: gcsim-engine-${{ steps.pin.outputs.tag }}-${{ hashFiles('scripts/build-gcsim.sh') }}
+
+      - name: Check out gcsim ${{ steps.pin.outputs.tag }}
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: genshinsim/gcsim
+          ref: ${{ steps.pin.outputs.tag }}
+          path: .cache/gcsim-src
+
+      # Install exactly the Go version gcsim asks for in its go.mod.
+      - name: Set up Go
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: .cache/gcsim-src/go.mod
+          cache-dependency-path: .cache/gcsim-src/go.sum
+
+      - name: Build the engine
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          GCSIM_SRC: .cache/gcsim-src
+          GOTOOLCHAIN: local
+        run: bash scripts/build-gcsim.sh
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Loads the engine, validates reference/sample_gcsim_config.txt, runs 100 iterations,
+      # and fails the build if team DPS is not within 10% of the known result (~35,100).
+      - name: Smoke test the engine
+        run: node scripts/wasm-smoke-test.mjs public/gcsim reference/sample_gcsim_config.txt 100 35100
+
+      - name: Upload the engine
+        uses: actions/upload-artifact@v7
+        with:
+          name: gcsim-engine
+          path: public/gcsim
+          if-no-files-found: error
+          retention-days: 7
