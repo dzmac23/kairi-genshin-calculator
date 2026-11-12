@@ -1,0 +1,27 @@
+{
+ "amplifying": {
+  "Vaporize (2.0x)": "Hydro on Pyro",
+  "Vaporize (1.5x)": "Pyro on Hydro",
+  "Melt (2.0x)": "Pyro on Cryo",
+  "Melt (1.5x)": "Cryo on Pyro",
+  "em_formula": "base * (1 + 2.78*EM/(EM+1400) + bonus)"
+ },
+ "catalyze": {
+  "Aggravate": 1.15,
+  "Spread": 1.25,
+  "em_formula": "coef * level_mult * (1 + 5*EM/(EM+1200) + bonus)"
+ },
+ "transformative": {
+  "Swirl": 0.6,
+  "Overloaded": 2.75,
+  "Superconduct": 1.5,
+  "Electro-Charged": 2.0,
+  "Shattered": 3.0,
+  "Burning": 0.25,
+  "Bloom": 2.0,
+  "Hyperbloom": 3.0,
+  "Burgeon": 3.0,
+  "em_formula": "level_mult * coef * (1 + 16*EM/(EM+2000) + bonus) * res_mult"
+ },
+ "notes": "Coefficients cross-checked against gcsim pkg/reactable. Lunar reactions not modeled."
+}
