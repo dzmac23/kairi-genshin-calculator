@@ -4,7 +4,7 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
 
 ## Status
 
-**Phase 1, step 3 of 7: the Results screen.** What exists so far:
+**Phase 1, step 4 of 7: the Team screen.** What exists so far:
 
 - The **Run** screen: choose 100, 500 (default) or 1000 iterations and press Run. The simulation is shared across several workers (parallel copies of the engine), with a progress bar, a live DPS preview and a **Cancel** button. Mistakes in the config are shown with gcsim's own error message. A run keeps going if you switch tabs.
 - The **Results** screen shows the last finished run:
@@ -14,8 +14,9 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
   - every damage source from highest to lowest
   - reaction counts
   - all time lost to failed actions (skill cooldown, burst energy, stamina and so on)
+- The **Team** screen: four slots, each with a searchable character picker, level, constellation, base talent levels, weapon (only types the character can use), weapon level, refinement, artifact sets (4-piece, 2 + 2 or none) and artifact stat totals. It shows each character's stat totals (character, weapon and artifacts, before passives, set effects and team buffs, which gcsim applies itself) and the gcsim lines for the team. The team is saved on this device automatically. Characters gcsim doesn't support yet (Kachina, Linnea, Lohen, Mitya, Nefer, Sandrone, Valeriy, Vesna, Vodyanitsa) get a warning and are skipped.
 - The Run screen starts with **no team**. Until the Team and Rotation screens exist, you can paste any gcsim config, or tap **Load placeholder test team** to check the engine works (see below).
-- The other tabs (Team, Rotation, History) are placeholders.
+- The Rotation and History tabs are placeholders. The Rotation screen (next step) will combine your Team with a rotation so you can run it.
 - Offline support: after the first visit, the app and the gcsim engine are saved on the device.
 - Automatic testing, building and publishing with GitHub Actions (see below).
 
@@ -67,7 +68,7 @@ npm test              # run the automatic tests
 npm run build         # type-check and build the production app into dist/
 ```
 
-Project layout: `src/` app code (`src/engine/` runs gcsim in workers, `src/results/` turns gcsim's results into readable rows, `src/screens/` holds each screen), `public/` icons and (after `npm run engine`) the engine, `scripts/` engine build and test scripts plus the data-generation prototypes, `data/` game data, `reference/` the original workbook and the placeholder test team (see `reference/README.md`).
+Project layout: `src/` app code (`src/engine/` runs gcsim in workers, `src/results/` turns gcsim's results into readable rows, `src/team/` holds the team model, stat totals and gcsim line generator, `src/data/` loads the game data, `src/screens/` holds each screen), `public/` icons and (after `npm run engine`) the engine, `scripts/` engine build and test scripts plus the data-generation prototypes, `data/` game data, `reference/` the original workbook and the placeholder test team (see `reference/README.md`).
 
 ## Licence
 
