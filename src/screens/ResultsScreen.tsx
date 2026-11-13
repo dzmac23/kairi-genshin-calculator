@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { summarize, type GcsimResult, type Stat } from '../results/summarize';
+import { isPlaceholderConfig, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
 import type { FinishedRun } from '../useSimulation';
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
@@ -28,6 +29,13 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
 
   return (
     <>
+      {isPlaceholderConfig(run.config) && (
+        <div className="placeholder-note card">
+          <strong>{PLACEHOLDER_LABEL}</strong>
+          <p className="small">{PLACEHOLDER_NOTE}</p>
+        </div>
+      )}
+
       <section className="card">
         <h2>Team DPS</h2>
         <p className="big">{fmt(view.teamDps.mean)}</p>

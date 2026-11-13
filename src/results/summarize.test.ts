@@ -2,11 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { characterName, reactionName, sourceName, summarize, type GcsimResult } from './summarize';
 
-// The real result gcsim produced for the sample team (C0 Neuvillette, Kazuha, Furina, Xilonen).
+// gcsim's own result for the placeholder test team (C0 Neuvillette, Kazuha, Furina, Xilonen).
+// Those builds were chosen for testing; they are not the owner's real builds.
 const sample: GcsimResult = JSON.parse(readFileSync('reference/sample_gcsim_result.json', 'utf8'));
 const view = summarize(sample);
 
-describe('summarize (sample team)', () => {
+describe('summarize (placeholder test team)', () => {
   it('reads team DPS, iterations and fight length', () => {
     expect(Math.round(view.teamDps.mean)).toBe(35126);
     expect(view.iterations).toBe(500);
@@ -51,7 +52,7 @@ describe('summarize (sample team)', () => {
   });
 
   it('lists time lost from largest to smallest, without zero rows', () => {
-    // Xilonen waits about 16 s per fight for burst energy, the biggest loss in this rotation.
+    // With these placeholder builds, Xilonen waits about 16 s per fight for burst energy.
     expect(view.timeLost[0]).toMatchObject({ kind: 'insufficient_energy', character: 'Xilonen' });
     expect(view.timeLost[0].seconds.mean).toBeCloseTo(16.4, 1);
     expect(view.timeLost.map((r) => r.character)).toEqual(['Xilonen', 'Neuvillette', 'Neuvillette']);

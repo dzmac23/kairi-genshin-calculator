@@ -77,6 +77,13 @@ button.wide { width: 100%; font-weight: 600; }
 button.secondary { background: #262c3a; color: var(--text); margin-top: 0.5rem; }
 button.danger { background: var(--warn); }
 details summary { cursor: pointer; color: var(--accent); padding: 0.25rem 0; }
+textarea.config.short { min-height: 8rem; }
+.placeholder-note {
+  border-left: 3px solid var(--gold); background: #f2c45e14; border-radius: 6px;
+  padding: 0.6rem 0.75rem; margin-bottom: 0.6rem;
+}
+.placeholder-note p { margin: 0.25rem 0 0; color: var(--muted); }
+.card.placeholder-note { margin-bottom: 1rem; padding: 0.75rem 1rem; }
 textarea.config {
   width: 100%; min-height: 16rem; margin-top: 0.5rem; padding: 0.5rem;
   font: 0.75rem/1.4 ui-monospace, Menlo, Consolas, monospace;

@@ -18,6 +18,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('Home');
   // Kept here, above the screens, so a run keeps going when you switch tabs.
   const simulation = useSimulation();
+  // The config to run. Starts empty: no team is loaded by default.
+  const [config, setConfig] = useState('');
   const running = simulation.state.phase === 'starting' || simulation.state.phase === 'running';
 
   // Shows a button when a new version of the app has been downloaded in the background.
@@ -61,6 +63,8 @@ export default function App() {
         {screen === 'Run' && (
           <RunScreen
             state={simulation.state}
+            config={config}
+            onConfigChange={setConfig}
             onRun={simulation.run}
             onCancel={simulation.cancel}
             onShowResults={() => setScreen('Results')}
