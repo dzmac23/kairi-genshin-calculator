@@ -3,13 +3,14 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import HomeScreen from './screens/HomeScreen';
 import ResultsScreen from './screens/ResultsScreen';
 import RunScreen from './screens/RunScreen';
+import TeamScreen from './screens/TeamScreen';
+import { useTeam } from './team/useTeam';
 import { useSimulation } from './useSimulation';
 
 const screens = ['Home', 'Team', 'Rotation', 'Run', 'Results', 'History'] as const;
 type Screen = (typeof screens)[number];
 
 const comingSoon: Partial<Record<Screen, string>> = {
-  Team: 'Four slots with character, weapon, artifact pickers and stat totals.',
   Rotation: 'Community rotation notation with a live gcsim translation preview.',
   History: 'Every run saved on this device, with export and import.',
 };
@@ -20,6 +21,8 @@ export default function App() {
   const simulation = useSimulation();
   // The config to run. Starts empty: no team is loaded by default.
   const [config, setConfig] = useState('');
+  // The team on the Team screen, saved on this device.
+  const { team, setTeam } = useTeam();
   const running = simulation.state.phase === 'starting' || simulation.state.phase === 'running';
 
   // Shows a button when a new version of the app has been downloaded in the background.
@@ -60,6 +63,7 @@ export default function App() {
 
       <main className="content">
         {screen === 'Home' && <HomeScreen onStart={() => setScreen('Run')} />}
+        {screen === 'Team' && <TeamScreen team={team} onChange={setTeam} />}
         {screen === 'Run' && (
           <RunScreen
             state={simulation.state}
