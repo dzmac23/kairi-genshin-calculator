@@ -14,7 +14,7 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
   - every damage source from highest to lowest
   - reaction counts
   - all time lost to failed actions (skill cooldown, burst energy, stamina and so on)
-- The **Team** screen: four slots, each with a searchable character picker, level, constellation, base talent levels, weapon (only types the character can use), weapon level, refinement, artifact sets (4-piece, 2 + 2 or none) and artifact stat totals. It shows each character's stat totals (character, weapon and artifacts, before passives, set effects and team buffs, which gcsim applies itself) and the gcsim lines for the team. The team is saved on this device automatically. Characters gcsim doesn't support yet (Kachina, Linnea, Lohen, Mitya, Nefer, Sandrone, Valeriy, Vesna, Vodyanitsa) get a warning and are skipped.
+- The **Team** screen: four slots, each with a searchable character picker, level, constellation, base talent levels, weapon (only types the character can use), weapon level, refinement, artifact sets (4-piece, 2 + 2 or none) and artifact stat totals. It shows each character's stat totals (character, weapon and artifacts, before passives, set effects and team buffs, which gcsim applies itself) and the gcsim lines for the team. The team is saved on this device automatically. Characters gcsim doesn't support yet get a warning and are skipped (see below).
 - The Run screen starts with **no team**. Until the Team and Rotation screens exist, you can paste any gcsim config, or tap **Load placeholder test team** to check the engine works (see below).
 - The Rotation and History tabs are placeholders. The Rotation screen (next step) will combine your Team with a rotation so you can run it.
 - Offline support: after the first visit, the app and the gcsim engine are saved on the device.
@@ -53,7 +53,16 @@ You can watch them in the repository's **Actions** tab. A green tick means it wo
 
 ## Updating gcsim
 
-Change the tag in `gcsim-version.txt` (for example `v2.49.6` → `v2.50.0`) and push. The workflow rebuilds and retests the engine automatically.
+The app uses **gcsim v2.50.0** (pinned in `gcsim-version.txt`).
+
+To upgrade:
+1. Change the tag in `gcsim-version.txt` (for example `v2.50.0` → `v2.51.0`).
+2. If the new version adds characters, weapons or sets, fill in their `gcsim_key` in `data/characters.json`, `data/weapons.json` or `data/artifact_sets.json`, and add them to `data/gcsim_keys.json`. gcsim's accepted names are in its `pkg/shortcut/*.dm.go` files.
+3. Push. The workflow rebuilds the engine and retests it with the placeholder test team.
+
+### Characters gcsim doesn't support yet
+
+As of gcsim v2.50.0, these characters are in the app's data (stats, talents and buffs) but gcsim can't simulate them yet, so the Team screen warns and skips them: **Kachina, Linnea, Lohen, Mitya, Nefer, Valeriy, Vesna, Vodyanitsa**. A team simulated without one of its members shows too little DPS, because that character's damage and buffs are missing. Sandrone was added in v2.50.0.
 
 ## For developers
 

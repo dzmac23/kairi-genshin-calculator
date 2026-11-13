@@ -69,6 +69,19 @@ describe('teamToGcsim', () => {
   });
 });
 
+describe('gcsim v2.50.0 support', () => {
+  it('treats Sandrone (added in v2.50.0) as supported', () => {
+    const t: Team = [{ ...emptySlot(), character: 'Sandrone', weapon: byKey(data.weapons, 'wolfsgravestone') }];
+    expect(checkTeam(t, data)).toEqual([]);
+    expect(teamToGcsim(t, data).split('\n')[0]).toBe('sandrone char lvl=90/90 cons=0 talent=9,9,9;');
+  });
+
+  it('lists exactly the eight characters gcsim v2.50.0 does not support', () => {
+    const unsupported = data.characters.filter((c) => !c.gcsim_key).map((c) => c.name);
+    expect(unsupported).toEqual(['Kachina', 'Linnea', 'Lohen', 'Mitya', 'Nefer', 'Valeriy', 'Vesna', 'Vodyanitsa']);
+  });
+});
+
 describe('checkTeam', () => {
   it('finds no problems with the placeholder test team', () => {
     expect(checkTeam(team, data)).toEqual([]);
