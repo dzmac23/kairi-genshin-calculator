@@ -4,11 +4,18 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
 
 ## Status
 
-**Phase 1, step 2 of 7: the Run screen.** What exists so far:
+**Phase 1, step 3 of 7: the Results screen.** What exists so far:
 
 - The **Run** screen: choose 100, 500 (default) or 1000 iterations and press Run. The simulation is shared across several workers (parallel copies of the engine), with a progress bar, a live DPS preview and a **Cancel** button. Mistakes in the config are shown with gcsim's own error message. A run keeps going if you switch tabs.
+- The **Results** screen shows the last finished run:
+  - team DPS (average, standard deviation, lowest and highest)
+  - gcsim's warnings in plain English, such as "Xilonen waited 16.4 s per fight for burst energy"
+  - each character's DPS, share of the team, time on field and energy left at the end
+  - every damage source from highest to lowest
+  - reaction counts
+  - all time lost to failed actions (skill cooldown, burst energy, stamina and so on)
 - For now the Run screen uses the sample team from `reference/sample_gcsim_config.txt`, which should give about 35,100 DPS. You can open "Show gcsim config" to edit it or paste any gcsim config.
-- The other tabs (Team, Rotation, Results, History) are placeholders.
+- The other tabs (Team, Rotation, History) are placeholders.
 - Offline support: after the first visit, the app and the gcsim engine are saved on the device.
 - Automatic testing, building and publishing with GitHub Actions (see below).
 
@@ -52,7 +59,7 @@ npm test              # run the automatic tests
 npm run build         # type-check and build the production app into dist/
 ```
 
-Project layout: `src/` app code (`src/engine/` runs gcsim in workers, `src/screens/` holds each screen), `public/` icons and (after `npm run engine`) the engine, `scripts/` engine build and test scripts plus the data-generation prototypes, `data/` game data, `reference/` the original workbook and gcsim samples.
+Project layout: `src/` app code (`src/engine/` runs gcsim in workers, `src/results/` turns gcsim's results into readable rows, `src/screens/` holds each screen), `public/` icons and (after `npm run engine`) the engine, `scripts/` engine build and test scripts plus the data-generation prototypes, `data/` game data, `reference/` the original workbook and gcsim samples.
 
 ## Licence
 

@@ -14,11 +14,12 @@ type Props = {
   state: SimState;
   onRun: (config: string) => void;
   onCancel: () => void;
+  onShowResults: () => void;
 };
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
 
-export default function RunScreen({ state, onRun, onCancel }: Props) {
+export default function RunScreen({ state, onRun, onCancel, onShowResults }: Props) {
   const [iterations, setIterationChoice] = useState(500);
   const [config, setConfig] = useState(sampleConfig.trim());
   const [now, setNow] = useState(performance.now());
@@ -64,7 +65,7 @@ export default function RunScreen({ state, onRun, onCancel }: Props) {
             Run {iterations} iterations
           </button>
         )}
-        <Status state={state} now={now} />
+        <Status state={state} now={now} onShowResults={onShowResults} />
       </section>
       <section className="card">
         <h2>Team and rotation</h2>
@@ -92,7 +93,7 @@ export default function RunScreen({ state, onRun, onCancel }: Props) {
   );
 }
 
-function Status({ state, now }: { state: SimState; now: number }) {
+function Status({ state, now, onShowResults }: { state: SimState; now: number; onShowResults: () => void }) {
   switch (state.phase) {
     case 'idle':
       return null;
@@ -141,7 +142,9 @@ function Status({ state, now }: { state: SimState; now: number }) {
             <dt>Time taken</dt>
             <dd>{state.seconds.toFixed(1)} s</dd>
           </dl>
-          <p className="muted small">The full breakdown arrives with the Results screen in the next step.</p>
+          <button className="secondary wide" onClick={onShowResults}>
+            See full results
+          </button>
         </div>
       );
     }
