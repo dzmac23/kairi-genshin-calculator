@@ -4,7 +4,12 @@ import { buildConfig, teamMembers } from './config/build';
 import { cleanSettings, DEFAULT_SETTINGS } from './config/settings';
 import { useGameData } from './data/gameData';
 import { getEngineVersion } from './engine/version';
+import ImportCard, { type ImportChoice } from './components/ImportCard';
+import { deliverFile } from './history/files';
 import { runName, type RunRecord } from './history/model';
+import { SavedRotationsBar, SavedTeamsPanel } from './screens/SavedTeams';
+import { cleanSavedTeam, isSavedTeam, sameRotation, sameTeam, savedNames, type ActiveSaved, type SavedTeam } from './teams/model';
+import { makeFile, readTransferFile, type TransferPreview } from './transfer';
 import { useHistory } from './history/useHistory';
 import type { RotationText } from './rotation/notation';
 import { DEFAULT_TOKEN_TABLE, OLD_DEFAULT_TOKEN_TABLES, parseTokenTable } from './rotation/tokens';
@@ -68,6 +73,114 @@ export default function App() {
   const history = useHistory();
   const [runLabel, setRunLabel] = useState('');
   const [iterations, setIterations] = usePersistentState('iterations', 500, (v) => ([100, 500, 1000].includes(v as number) ? (v as number) : undefined));
+
+  // Saved teams (with labelled rotations), and which one the Team and Rotation screens came from.
+  const [savedTeams, setSavedTeams] = usePersistentState<SavedTeam[]>('savedTeams', [], (v) =>
+    Array.isArray(v) ? v.filter(isSavedTeam).map(cleanSavedTeam) : undefined,
+  );
+  const [active, setActive] = usePersistentState<ActiveSaved>('activeTeam', {}, (v) => (v && typeof v === 'object' ? (v as ActiveSaved) : undefined));
+  const activeTeam = savedTeams.find((t) => t.id === active.teamId);
+  const activeRotation = activeTeam?.rotations.find((r) => r.id === active.rotationId);
+  const teamDirty = !!activeTeam && !sameTeam(activeTeam.team, team);
+  const rotationDirty = !!activeRotation && !sameRotation(activeRotation.rotation, rotation);
+  const [teamMessage, setTeamMessage] = useState('');
+  const [backupMessage, setBackupMessage] = useState('');
+  const nowIso = () => new Date().toISOString();
+  const updateTeam = (id: string, change: (t: SavedTeam) => SavedTeam) =>
+    setSavedTeams((ts) => ts.map((t) => (t.id === id ? { ...change(t), updatedAt: nowIso() } : t)));
+  const teamActions = {
+    saveNew: (name: string) => {
+      const rotations = rotation.loop.trim() ? [{ id: crypto.randomUUID(), label: 'Main', rotation: { ...rotation } }] : [];
+      const saved: SavedTeam = { id: crypto.randomUUID(), name, team: structuredClone(team), rotations, createdAt: nowIso(), updatedAt: nowIso() };
+      setSavedTeams((ts) => [...ts, saved]);
+      setActive({ teamId: saved.id, rotationId: rotations[0]?.id });
+      setTeamMessage(`Saved "${name}"${rotations.length ? ' with the current rotation as "Main"' : ''}.`);
+    },
+    saveChanges: () => activeTeam && updateTeam(activeTeam.id, (t) => ({ ...t, team: structuredClone(team) })),
+    load: (id: string) => {
+      const t = savedTeams.find((x) => x.id === id);
+      if (!t) return;
+      setTeam(structuredClone(t.team));
+      const r = t.rotations[0];
+      if (r) setRotation({ ...r.rotation });
+      setActive({ teamId: id, rotationId: r?.id });
+      setTeamMessage(`Loaded "${t.name}"${r ? ` with rotation "${r.label}"` : ''}.`);
+    },
+    rename: (id: string, name: string) => updateTeam(id, (t) => ({ ...t, name })),
+    remove: (id: string) => {
+      setSavedTeams((ts) => ts.filter((t) => t.id !== id));
+      if (active.teamId === id) setActive({});
+    },
+    export: async (list: SavedTeam[], share: boolean) => setTeamMessage(await deliverFile(makeFile('teams', { teams: list }), share)),
+  };
+  const rotationActions = {
+    saveNew: (label: string) => {
+      if (!activeTeam) return;
+      const r = { id: crypto.randomUUID(), label, rotation: { ...rotation } };
+      updateTeam(activeTeam.id, (t) => ({ ...t, rotations: [...t.rotations, r] }));
+      setActive({ teamId: activeTeam.id, rotationId: r.id });
+    },
+    saveChanges: () =>
+      activeTeam &&
+      activeRotation &&
+      updateTeam(activeTeam.id, (t) => ({ ...t, rotations: t.rotations.map((r) => (r.id === activeRotation.id ? { ...r, rotation: { ...rotation } } : r)) })),
+    load: (rid: string) => {
+      const r = activeTeam?.rotations.find((x) => x.id === rid);
+      if (!r || !activeTeam) return;
+      setRotation({ ...r.rotation });
+      setActive({ teamId: activeTeam.id, rotationId: rid });
+    },
+    rename: (rid: string, label: string) =>
+      activeTeam && updateTeam(activeTeam.id, (t) => ({ ...t, rotations: t.rotations.map((r) => (r.id === rid ? { ...r, label } : r)) })),
+    remove: (rid: string) => {
+      if (!activeTeam) return;
+      updateTeam(activeTeam.id, (t) => ({ ...t, rotations: t.rotations.filter((r) => r.id !== rid) }));
+      if (active.rotationId === rid) setActive({ teamId: activeTeam.id });
+    },
+  };
+
+  // One import flow for every Import button: read the file, preview it, then add what was chosen.
+  const [importPreview, setImportPreview] = useState<TransferPreview | null>(null);
+  const [importDone, setImportDone] = useState('');
+  const openImport = async (file: File) => {
+    const text = await file.text();
+    setImportPreview(
+      readTransferFile(text, { runIds: new Set(history.runs.map((r) => r.id)), teamIds: new Set(savedTeams.map((t) => t.id)) }),
+    );
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const confirmImport = (choice: ImportChoice) => {
+    if (choice.runs.length) history.importRuns(choice.runs);
+    if (choice.teams.length) setSavedTeams((ts) => [...ts, ...choice.teams]);
+    const c = choice.current;
+    if (c) {
+      setTeam(structuredClone(c.team));
+      setRotation({ ...c.rotation });
+      setSettings(cleanSettings(c.settings));
+      if (typeof c.tokenTable === 'string') setTokenTable(c.tokenTable);
+      if ([100, 500, 1000].includes(c.iterations)) setIterations(c.iterations);
+      const known = new Set([...savedTeams, ...choice.teams].map((t) => t.id));
+      setActive(c.active?.teamId && known.has(c.active.teamId) ? c.active : {});
+    }
+    setImportPreview(null);
+    const parts = [
+      choice.runs.length && `${choice.runs.length} run${choice.runs.length === 1 ? '' : 's'}`,
+      choice.teams.length && `${choice.teams.length} team${choice.teams.length === 1 ? '' : 's'}`,
+      c && 'your current setup',
+    ].filter(Boolean);
+    setImportDone(`Imported ${parts.join(', ')}.`);
+  };
+  const exportBackup = async (share: boolean) =>
+    setBackupMessage(
+      await deliverFile(
+        makeFile('backup', {
+          runs: history.runs,
+          teams: savedTeams,
+          current: { team, rotation, settings: cleanSettings(settings), tokenTable, iterations, active },
+        }),
+        share,
+      ),
+    );
   const [viewedRunId, setViewedRunId] = useState<string | undefined>();
   const seenRun = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -86,6 +199,8 @@ export default function App() {
         id: r.id,
         createdAt: r.finishedAt.toISOString(),
         label: r.meta.label?.trim() || undefined,
+        teamName: r.meta.teamName,
+        rotationLabel: r.meta.rotationLabel,
         origin: 'local',
         gcsimVersion: v?.gcsimTag,
         source: r.meta.source,
@@ -150,8 +265,45 @@ export default function App() {
       )}
 
       <main className="content">
-        {screen === 'Home' && <HomeScreen onStart={() => setScreen('Run')} />}
-        {screen === 'Team' && <TeamScreen team={team} onChange={setTeam} onGoToRotation={() => setScreen('Rotation')} />}
+        {importPreview && <ImportCard preview={importPreview} onCancel={() => setImportPreview(null)} onConfirm={confirmImport} />}
+        {importDone && !importPreview && (
+          <div className="banner">
+            {importDone}
+            <button onClick={() => setImportDone('')}>OK</button>
+          </div>
+        )}
+        {screen === 'Home' && (
+          <HomeScreen
+            onStart={() => setScreen('Run')}
+            onBackup={exportBackup}
+            onImportFile={openImport}
+            backupMessage={backupMessage}
+            counts={{ runs: history.runs.length, teams: savedTeams.length }}
+          />
+        )}
+        {screen === 'Team' && (
+          <TeamScreen
+            team={team}
+            onChange={setTeam}
+            onGoToRotation={() => setScreen('Rotation')}
+            header={
+              <SavedTeamsPanel
+                savedTeams={savedTeams}
+                active={activeTeam}
+                dirty={teamDirty}
+                canSave={team.some((s) => s.character)}
+                onLoad={teamActions.load}
+                onSaveNew={teamActions.saveNew}
+                onSaveChanges={teamActions.saveChanges}
+                onRename={teamActions.rename}
+                onDelete={teamActions.remove}
+                onExport={teamActions.export}
+                onImportFile={openImport}
+                message={teamMessage}
+              />
+            }
+          />
+        )}
         {screen === 'Rotation' && (
           <RotationScreen
             rotation={rotation}
@@ -164,6 +316,20 @@ export default function App() {
             built={built}
             onGoToRun={() => setScreen('Run')}
             onGoToTeam={() => setScreen('Team')}
+            header={
+              <SavedRotationsBar
+                active={activeTeam}
+                activeRotationId={active.rotationId}
+                dirty={rotationDirty}
+                canSave={!!rotation.loop.trim()}
+                onLoad={rotationActions.load}
+                onSaveNew={rotationActions.saveNew}
+                onSaveChanges={rotationActions.saveChanges}
+                onRename={rotationActions.rename}
+                onDelete={rotationActions.remove}
+                onGoToTeam={() => setScreen('Team')}
+              />
+            }
           />
         )}
         {screen === 'Run' && (
@@ -189,7 +355,14 @@ export default function App() {
                   : undefined,
                 // Saved with the run in the History.
                 source === 'team'
-                  ? { source, label: runLabel, team: structuredClone(team), rotation: { ...rotation }, settings: cleanSettings(settings) }
+                  ? {
+                      source,
+                      label: runLabel,
+                      team: structuredClone(team),
+                      rotation: { ...rotation },
+                      settings: cleanSettings(settings),
+                      ...savedNames(activeTeam, active, team, rotation),
+                    }
                   : { source, label: runLabel },
               )
             }
@@ -221,8 +394,10 @@ export default function App() {
               history.remove(ids);
               if (viewedRunId && ids.includes(viewedRunId)) setViewedRunId(undefined);
             }}
-            onImport={history.importRuns}
+            onImportFile={openImport}
             onLoad={(r) => {
+              // The loaded team and rotation are a copy, not a saved team being edited.
+              setActive({});
               if (r.team) setTeam(structuredClone(r.team));
               if (r.rotation) setRotation({ ...r.rotation });
               if (r.settings) setSettings(cleanSettings(r.settings));

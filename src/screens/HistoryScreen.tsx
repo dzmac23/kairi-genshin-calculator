@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
-import { canShareFiles, downloadFile, shareFile } from '../history/files';
-import { exportFileName, makeExportFile, readImportFile, runCharacters, runDps, runName, type ImportPreview, type RunRecord } from '../history/model';
+import { canShareFiles, deliverFile } from '../history/files';
+import { runCharacters, runDps, runName, type RunRecord } from '../history/model';
 import { isPlaceholderConfig } from '../placeholder';
+import { makeFile } from '../transfer';
 
 type Props = {
   runs: RunRecord[];
@@ -9,7 +10,8 @@ type Props = {
   onOpen: (id: string) => void;
   onRename: (id: string, label: string) => void;
   onDelete: (ids: string[]) => void;
-  onImport: (runs: RunRecord[]) => void;
+  /** Opens the shared Import screen for a chosen file (runs, teams or a full backup). */
+  onImportFile: (file: File) => void;
   /** Puts a run's team, rotation and fight settings back on the Team and Rotation screens. */
   onLoad: (run: RunRecord) => void;
 };
@@ -23,7 +25,6 @@ export default function HistoryScreen(props: Props) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<string | null>(null);
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [message, setMessage] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const sharing = useMemo(() => canShareFiles(), []);
@@ -36,16 +37,7 @@ export default function HistoryScreen(props: Props) {
     });
   }, [runs, query]);
 
-  const exportRuns = async (list: RunRecord[], share: boolean) => {
-    const name = exportFileName(list);
-    const text = JSON.stringify(makeExportFile(list));
-    if (share) {
-      if (await shareFile(name, text)) setMessage(`Shared ${list.length === 1 ? '1 run' : `${list.length} runs`}.`);
-    } else {
-      downloadFile(name, text);
-      setMessage(`Saved ${name}.`);
-    }
-  };
+  const exportRuns = async (list: RunRecord[], share: boolean) => setMessage(await deliverFile(makeFile('runs', { runs: list }), share));
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -57,11 +49,10 @@ export default function HistoryScreen(props: Props) {
 
   const chosenRuns = runs.filter((r) => selected.has(r.id));
 
-  const onFile = async (file: File | undefined) => {
+  const onFile = (file: File | undefined) => {
     if (!file) return;
     setMessage('');
-    const text = await file.text();
-    setPreview(readImportFile(text, new Set(runs.map((r) => r.id))));
+    props.onImportFile(file);
     if (fileInput.current) fileInput.current.value = '';
   };
 
@@ -71,7 +62,8 @@ export default function HistoryScreen(props: Props) {
         <h2>History</h2>
         <p className="muted small">
           Every successful run is saved here, on this device only. Export runs to back them up, move them to another
-          device, or share them; import a file to add runs from somewhere else.
+          device, or share them; import a file (runs, teams or a full backup) to add them here. The full backup is on
+          the Home screen.
         </p>
         <div className="button-row">
           <button className="secondary" onClick={() => fileInput.current?.click()}>
@@ -96,18 +88,6 @@ export default function HistoryScreen(props: Props) {
         />
         {message && <p className="small muted">{message}</p>}
       </section>
-
-      {preview && (
-        <ImportCard
-          preview={preview}
-          onCancel={() => setPreview(null)}
-          onConfirm={(chosen) => {
-            props.onImport(chosen);
-            setPreview(null);
-            setMessage(`Imported ${chosen.length === 1 ? '1 run' : `${chosen.length} runs`}.`);
-          }}
-        />
-      )}
 
       <section className="card">
         <input
@@ -313,71 +293,5 @@ function DeleteButton({ label, onConfirm }: { label: string; onConfirm: () => vo
         No
       </button>
     </span>
-  );
-}
-
-function ImportCard({ preview, onCancel, onConfirm }: { preview: ImportPreview; onCancel: () => void; onConfirm: (runs: RunRecord[]) => void }) {
-  const [chosen, setChosen] = useState<Set<string>>(() => new Set(preview.runs.filter((r) => !preview.duplicates.has(r.id)).map((r) => r.id)));
-  if (preview.error) {
-    return (
-      <section className="card">
-        <h2>Import</h2>
-        <p className="warn">{preview.error}</p>
-        <button className="secondary" onClick={onCancel}>
-          Close
-        </button>
-      </section>
-    );
-  }
-  const fresh = preview.runs.length - preview.duplicates.size;
-  return (
-    <section className="card">
-      <h2>Import</h2>
-      <p className="small">
-        This file has {preview.runs.length === 1 ? '1 run' : `${preview.runs.length} runs`}
-        {preview.duplicates.size > 0 && ` (${preview.duplicates.size} already in your history)`}
-        {preview.invalid > 0 && `, and ${preview.invalid} damaged ${preview.invalid === 1 ? 'entry' : 'entries'} that will be skipped`}.
-        {fresh === 0 && ' Nothing new to import.'}
-      </p>
-      <ul className="import-list">
-        {preview.runs.map((r) => {
-          const dup = preview.duplicates.has(r.id);
-          return (
-            <li key={r.id}>
-              <label>
-                <input
-                  type="checkbox"
-                  disabled={dup}
-                  checked={chosen.has(r.id)}
-                  onChange={() =>
-                    setChosen((s) => {
-                      const next = new Set(s);
-                      if (next.has(r.id)) next.delete(r.id);
-                      else next.add(r.id);
-                      return next;
-                    })
-                  }
-                />
-                <span>
-                  {runName(r)}
-                  <span className="muted small">
-                    {' '}
-                    · {when(r.createdAt)} · {fmt(runDps(r))} DPS{dup ? ' · already in your history' : ''}
-                  </span>
-                </span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
-      <div className="button-row">
-        <button onClick={() => onConfirm(preview.runs.filter((r) => chosen.has(r.id)))} disabled={chosen.size === 0}>
-          Import {chosen.size === 1 ? '1 run' : `${chosen.size} runs`}
-        </button>
-        <button className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </section>
   );
 }

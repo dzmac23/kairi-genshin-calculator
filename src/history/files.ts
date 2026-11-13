@@ -1,3 +1,5 @@
+import { fileName, type TransferFile } from '../transfer';
+
 // Saving and sharing export files. "Download" saves a .json file; "Share" opens the device's share
 // sheet (WhatsApp, Drive, email…) where the browser supports sharing files (mostly phones).
 
@@ -32,4 +34,13 @@ export async function shareFile(name: string, text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Saves an export file (download) or opens the share sheet. Returns a short message for the screen. */
+export async function deliverFile(file: TransferFile, share: boolean): Promise<string> {
+  const name = fileName(file);
+  const text = JSON.stringify(file);
+  if (share) return (await shareFile(name, text)) ? 'Shared.' : '';
+  downloadFile(name, text);
+  return `Saved ${name}.`;
 }
