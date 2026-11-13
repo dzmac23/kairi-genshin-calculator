@@ -26,7 +26,19 @@ const SECTIONS = [
   { id: 'reactions', title: 'Reactions' },
 ];
 
-export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; onGoToRun: () => void }) {
+type Props = {
+  run?: FinishedRun;
+  /** The run's History name ("Successful Run – …"), once saved. */
+  name?: string;
+  label?: string;
+  onRename?: (label: string) => void;
+  /** True when showing a run opened from the History rather than the latest one. */
+  olderRun?: boolean;
+  onShowLatest?: () => void;
+  onGoToRun: () => void;
+};
+
+export default function ResultsScreen({ run, name, label, onRename, olderRun, onShowLatest, onGoToRun }: Props) {
   const view = useMemo(() => (run ? summarize(run.result as GcsimResult) : undefined), [run]);
 
   if (!run || !view) {
@@ -44,6 +56,7 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
 
   return (
     <>
+      {name && <RunTitle name={name} label={label} onRename={onRename} olderRun={olderRun} onShowLatest={onShowLatest} when={run.finishedAt} />}
       {isPlaceholderConfig(run.config) && (
         <div className="placeholder-note card">
           <strong>{PLACEHOLDER_LABEL}</strong>
@@ -94,6 +107,73 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
         <Reactions view={view} />
       </Section>
     </>
+  );
+}
+
+function RunTitle({
+  name,
+  label,
+  onRename,
+  olderRun,
+  onShowLatest,
+  when,
+}: {
+  name: string;
+  label?: string;
+  onRename?: (label: string) => void;
+  olderRun?: boolean;
+  onShowLatest?: () => void;
+  when: Date;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(label ?? '');
+  return (
+    <section className="card run-title">
+      {editing && onRename ? (
+        <div className="rename">
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Name this run (empty = character names)" aria-label="Run name" autoFocus />
+          <button
+            className="small-button"
+            onClick={() => {
+              onRename(draft);
+              setEditing(false);
+            }}
+          >
+            Save
+          </button>
+          <button className="link small" onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="card-head">
+          <strong>{name}</strong>
+          {onRename && (
+            <button
+              className="link small"
+              onClick={() => {
+                setDraft(label ?? '');
+                setEditing(true);
+              }}
+            >
+              Rename
+            </button>
+          )}
+        </div>
+      )}
+      <p className="muted small">
+        {when.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+        {olderRun && ' · a saved run from your History'}
+        {olderRun && onShowLatest && (
+          <>
+            {' · '}
+            <button className="link small" onClick={onShowLatest}>
+              Show the latest run
+            </button>
+          </>
+        )}
+      </p>
+    </section>
   );
 }
 

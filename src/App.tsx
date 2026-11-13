@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { buildConfig, teamMembers } from './config/build';
 import { cleanSettings, DEFAULT_SETTINGS } from './config/settings';
 import { useGameData } from './data/gameData';
+import { getEngineVersion } from './engine/version';
+import { runName, type RunRecord } from './history/model';
+import { useHistory } from './history/useHistory';
 import type { RotationText } from './rotation/notation';
 import { DEFAULT_TOKEN_TABLE, OLD_DEFAULT_TOKEN_TABLES, parseTokenTable } from './rotation/tokens';
+import HistoryScreen from './screens/HistoryScreen';
 import HomeScreen from './screens/HomeScreen';
 import RotationScreen from './screens/RotationScreen';
 import ResultsScreen from './screens/ResultsScreen';
@@ -12,14 +16,24 @@ import RunScreen, { type RunSource } from './screens/RunScreen';
 import TeamScreen from './screens/TeamScreen';
 import { useTeam } from './team/useTeam';
 import { usePersistentState } from './usePersistentState';
-import { useSimulation } from './useSimulation';
+import { useSimulation, type FinishedRun } from './useSimulation';
 
 const screens = ['Home', 'Team', 'Rotation', 'Run', 'Results', 'History'] as const;
 type Screen = (typeof screens)[number];
 
-const comingSoon: Partial<Record<Screen, string>> = {
-  History: 'Every run saved on this device, with export and import.',
-};
+/** A saved run as the Results screen shows it. */
+function recordToRun(r: RunRecord): FinishedRun {
+  return {
+    id: r.id,
+    meta: { source: r.source, label: r.label, team: r.team, rotation: r.rotation, settings: r.settings },
+    result: r.result,
+    seconds: r.seconds,
+    finishedAt: new Date(r.createdAt),
+    config: r.config,
+    notes: r.notes,
+    timing: r.timing,
+  };
+}
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('Home');
@@ -48,6 +62,50 @@ export default function App() {
     [data, team, rotation, parsedTable, settings],
   );
   const running = simulation.state.phase === 'starting' || simulation.state.phase === 'running';
+
+  // Run history: every successful run is saved on this device, and updated when its rotation
+  // timing has been measured.
+  const history = useHistory();
+  const [runLabel, setRunLabel] = useState('');
+  const [iterations, setIterations] = usePersistentState('iterations', 500, (v) => ([100, 500, 1000].includes(v as number) ? (v as number) : undefined));
+  const [viewedRunId, setViewedRunId] = useState<string | undefined>();
+  const seenRun = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const r = simulation.lastRun;
+    if (!r) return;
+    if (seenRun.current !== r.id) {
+      // A new run finished: show it, and clear the label box for the next one.
+      seenRun.current = r.id;
+      setViewedRunId(undefined);
+      setRunLabel('');
+    }
+    let cancelled = false;
+    getEngineVersion().then((v) => {
+      if (cancelled) return;
+      history.save({
+        id: r.id,
+        createdAt: r.finishedAt.toISOString(),
+        label: r.meta.label?.trim() || undefined,
+        origin: 'local',
+        gcsimVersion: v?.gcsimTag,
+        source: r.meta.source,
+        team: r.meta.team,
+        rotation: r.meta.rotation,
+        settings: r.meta.settings,
+        config: r.config,
+        notes: r.notes,
+        seconds: r.seconds,
+        result: r.result,
+        timing: typeof r.timing === 'object' ? r.timing : undefined,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [simulation.lastRun]);
+  const viewed = viewedRunId ? history.runs.find((r) => r.id === viewedRunId) : undefined;
+  const shownRun = viewed ? recordToRun(viewed) : simulation.lastRun;
+  const shownRecord = shownRun ? history.runs.find((r) => r.id === shownRun.id) : undefined;
 
   // Shows a button when a new version of the app has been downloaded in the background.
   const {
@@ -111,6 +169,10 @@ export default function App() {
             onGoTo={setScreen}
             config={config}
             onConfigChange={setConfig}
+            label={runLabel}
+            onLabelChange={setRunLabel}
+            iterations={iterations}
+            onIterationsChange={setIterations}
             onRun={(runConfig, notes) =>
               simulation.run(
                 runConfig,
@@ -119,18 +181,49 @@ export default function App() {
                 source === 'team' && built?.timingConfig
                   ? { config: built.timingConfig, turns: built.translation.turns, durationSeconds: cleanSettings(settings).duration }
                   : undefined,
+                // Saved with the run in the History.
+                source === 'team'
+                  ? { source, label: runLabel, team: structuredClone(team), rotation: { ...rotation }, settings: cleanSettings(settings) }
+                  : { source, label: runLabel },
               )
             }
             onCancel={simulation.cancel}
             onShowResults={() => setScreen('Results')}
           />
         )}
-        {screen === 'Results' && <ResultsScreen run={simulation.lastRun} onGoToRun={() => setScreen('Run')} />}
-        {comingSoon[screen] && (
-          <section className="card">
-            <h2>{screen}</h2>
-            <p className="muted">Coming soon: {comingSoon[screen]}</p>
-          </section>
+        {screen === 'Results' && (
+          <ResultsScreen
+            run={shownRun}
+            name={shownRecord ? runName(shownRecord) : undefined}
+            olderRun={!!viewed && viewed.id !== simulation.lastRun?.id}
+            onShowLatest={simulation.lastRun ? () => setViewedRunId(undefined) : undefined}
+            onRename={shownRecord ? (label) => history.rename(shownRecord.id, label) : undefined}
+            label={shownRecord?.label}
+            onGoToRun={() => setScreen('Run')}
+          />
+        )}
+        {screen === 'History' && (
+          <HistoryScreen
+            runs={history.runs}
+            loaded={history.loaded}
+            onOpen={(id) => {
+              setViewedRunId(id);
+              setScreen('Results');
+            }}
+            onRename={history.rename}
+            onDelete={(ids) => {
+              history.remove(ids);
+              if (viewedRunId && ids.includes(viewedRunId)) setViewedRunId(undefined);
+            }}
+            onImport={history.importRuns}
+            onLoad={(r) => {
+              if (r.team) setTeam(structuredClone(r.team));
+              if (r.rotation) setRotation({ ...r.rotation });
+              if (r.settings) setSettings(cleanSettings(r.settings));
+              setSource('team');
+              setScreen('Rotation');
+            }}
+          />
         )}
       </main>
 

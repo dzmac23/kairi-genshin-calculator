@@ -269,3 +269,30 @@ details.section[open] > summary { margin-bottom: 0.75rem; }
 .energy-row { padding: 0.5rem 0; border-bottom: 1px solid #ffffff0d; }
 .energy-head { display: flex; gap: 0.75rem; align-items: baseline; font-size: 0.9rem; }
 .energy-row p { margin: 0; }
+
+/* Step 6: History */
+.selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0; padding: 0.5rem 0.6rem; background: #1e3346; border-radius: 8px; }
+.selection-bar .small-button { margin: 0; }
+.run-list { list-style: none; padding: 0; margin: 0.75rem 0 0; }
+.run-row { border-bottom: 1px solid #ffffff0d; }
+.run-row.open { background: #232938; border-radius: 8px; }
+.run-main { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.4rem; }
+.run-main input[type='checkbox'] { width: 1.2rem; height: 1.2rem; min-height: 0; flex: none; accent-color: var(--accent); }
+.run-summary { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; background: none; color: var(--text); padding: 0; min-height: 0; text-align: left; border-radius: 0; }
+.run-name { font-weight: 600; overflow-wrap: anywhere; }
+.run-badges { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.badge { font-size: 0.7rem; padding: 0.05rem 0.45rem; border-radius: 999px; background: #ffffff14; color: var(--muted); }
+.badge.gold { background: #f2c45e22; color: var(--gold); }
+.run-dps { font-weight: 700; color: var(--gold); white-space: nowrap; }
+.run-actions { padding: 0 0.6rem 0.75rem 2.4rem; }
+.run-actions .small-button { margin: 0; }
+.rename { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.rename input { flex: 1; min-width: 12rem; }
+.confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+button.danger-text { color: var(--warn); }
+.import-list { list-style: none; padding: 0; margin: 0.5rem 0 1rem; }
+.import-list li { padding: 0.4rem 0; border-bottom: 1px solid #ffffff0d; }
+.import-list label { display: flex; gap: 0.6rem; align-items: flex-start; }
+.import-list input { width: 1.2rem; height: 1.2rem; min-height: 0; margin-top: 0.15rem; flex: none; accent-color: var(--accent); }
+.run-title { padding-top: 0.75rem; padding-bottom: 0.5rem; }
+.run-title p { margin: 0.2rem 0 0; }
