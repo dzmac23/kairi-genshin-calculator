@@ -7,7 +7,7 @@
 import type { SimSettings } from './config/settings';
 import { runCharacters, type RunRecord } from './history/model';
 import type { RotationText } from './rotation/notation';
-import type { Team } from './team/model';
+import { cleanTeam, type Team } from './team/model';
 import { cleanSavedTeam, isSavedTeam, type ActiveSaved, type SavedTeam } from './teams/model';
 
 export type TransferKind = 'runs' | 'teams' | 'backup';
@@ -117,7 +117,7 @@ export function readTransferFile(
     importedAt: r.origin === 'imported' && r.importedAt ? r.importedAt : now.toISOString(),
   }));
   const teams = rawTeams.filter(isSavedTeam).map(cleanSavedTeam);
-  const current = isCurrent(file.current) ? file.current : undefined;
+  const current = isCurrent(file.current) ? { ...file.current, team: cleanTeam(file.current.team)! } : undefined;
   return {
     kind: file.kind,
     runs,

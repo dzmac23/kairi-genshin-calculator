@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameData, type GameData } from '../data/gameData';
 import { checkTeam, num, teamToGcsim } from './gcsim';
-import { emptySlot, levelToGcsim, type Team } from './model';
+import { cleanSlot, cleanTeam, emptySlot, levelToGcsim, type Team } from './model';
 import { byKey, placeholderTeam } from './placeholderTeam.testutil';
 import { computeStats } from './stats';
 
@@ -111,5 +111,16 @@ describe('helpers', () => {
     expect(num(9.92 / 100)).toBe('0.0992');
     expect(num(128.4 / 100)).toBe('1.284');
     expect(num(0)).toBe('0');
+  });
+});
+
+describe('repairing saved or imported team data', () => {
+  it('keeps good values and replaces malformed ones with defaults', () => {
+    const slot = cleanSlot({ character: 'Furina', talents: 9, constellation: 9, level: '85', refinement: '5', sets: { mode: 'weird' }, artifacts: { cr: 40, cd: 'lots', bogus: 3 } });
+    expect(slot).toEqual({ ...emptySlot(), character: 'Furina', constellation: 6, artifacts: { cr: 40 } });
+  });
+  it('accepts a whole team only with exactly four slots', () => {
+    expect(cleanTeam([1, 2, 3])).toBeUndefined();
+    expect(cleanTeam([{}, null, 'x', { character: 'Skirk' }])!.map((s) => s.character)).toEqual([null, null, null, 'Skirk']);
   });
 });
