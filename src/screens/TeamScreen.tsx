@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
 import { useGameData, type GameData, type LevelKey } from '../data/gameData';
 import { checkTeam, teamToGcsim } from '../team/gcsim';
 import { ARTIFACT_STATS, CHARACTER_LEVELS, emptySlot, WEAPON_LEVELS, type Slot, type Team } from '../team/model';
 import { computeStats } from '../team/stats';
 
-type Props = { team: Team; onChange: (team: Team) => void };
+type Props = { team: Team; onChange: (team: Team) => void; onGoToRotation: () => void };
 
 const TALENT_NAMES = ['Normal Attack', 'Elemental Skill', 'Elemental Burst'];
 
-export default function TeamScreen({ team, onChange }: Props) {
+export default function TeamScreen({ team, onChange, onGoToRotation }: Props) {
   const data = useGameData();
   const [active, setActive] = useState(0);
 
@@ -51,7 +52,7 @@ export default function TeamScreen({ team, onChange }: Props) {
 
       <SlotEditor key={active} index={active} slot={team[active]} data={data} onChange={(s) => updateSlot(active, s)} />
 
-      <TeamSummary team={team} data={data} problems={problems} />
+      <TeamSummary team={team} data={data} problems={problems} onGoToRotation={onGoToRotation} />
     </>
   );
 }
@@ -236,7 +237,17 @@ function StatTotals({ slot, data }: { slot: Slot; data: GameData }) {
   );
 }
 
-function TeamSummary({ team, data, problems }: { team: Team; data: GameData; problems: ReturnType<typeof checkTeam> }) {
+function TeamSummary({
+  team,
+  data,
+  problems,
+  onGoToRotation,
+}: {
+  team: Team;
+  data: GameData;
+  problems: ReturnType<typeof checkTeam>;
+  onGoToRotation: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const lines = teamToGcsim(team, data);
   const copy = async () => {
@@ -252,7 +263,10 @@ function TeamSummary({ team, data, problems }: { team: Team; data: GameData; pro
     <section className="card">
       <h2>Team check</h2>
       {problems.length === 0 ? (
-        <p>Ready for gcsim. The Rotation screen (next step) will add the rotation and fight settings.</p>
+        <>
+          <p>Team ready. Next, write the rotation and fight settings.</p>
+          <button onClick={onGoToRotation}>Go to Rotation</button>
+        </>
       ) : (
         <ul className="problems">
           {problems.map((p, i) => (
@@ -287,63 +301,6 @@ function LevelSelect({ label, value, levels, onChange }: { label: string; value:
           </option>
         ))}
       </select>
-    </label>
-  );
-}
-
-function Segmented<T extends string | number>({
-  label,
-  value,
-  values,
-  onChange,
-  prefix = '',
-  names,
-}: {
-  label: string;
-  value: T;
-  values: readonly T[];
-  onChange: (v: T) => void;
-  prefix?: string;
-  names?: Partial<Record<T, string>>;
-}) {
-  return (
-    <div className="field">
-      <span className="field-label">{label}</span>
-      <div className="segmented" role="radiogroup" aria-label={label}>
-        {values.map((v) => (
-          <button key={String(v)} type="button" role="radio" aria-checked={v === value} className={v === value ? 'selected' : ''} onClick={() => onChange(v)}>
-            {names?.[v] ?? `${prefix}${v}`}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** A number box that lets you type freely ("33." or "") and stores a number or nothing. */
-function NumberField({ label, value, suffix, onChange }: { label: string; value: number | undefined; suffix: string; onChange: (v: number | undefined) => void }) {
-  const [text, setText] = useState(value === undefined ? '' : String(value));
-  useEffect(() => {
-    if (value !== (text.trim() === '' ? undefined : Number(text.replace(',', '.')))) setText(value === undefined ? '' : String(value));
-  }, [value]);
-  return (
-    <label className="number-field">
-      <span className="small">{label}</span>
-      <span className="number-input">
-        <input
-          inputMode="decimal"
-          value={text}
-          onChange={(e) => {
-            const t = e.target.value;
-            setText(t);
-            const n = Number(t.replace(',', '.'));
-            if (t.trim() === '') onChange(undefined);
-            else if (Number.isFinite(n)) onChange(n);
-          }}
-          aria-label={label}
-        />
-        {suffix && <span className="muted">{suffix}</span>}
-      </span>
     </label>
   );
 }

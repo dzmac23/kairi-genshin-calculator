@@ -4,7 +4,7 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
 
 ## Status
 
-**Phase 1, step 4 of 7: the Team screen.** What exists so far:
+**Phase 1, step 5 of 7: the Rotation screen. The app is now usable:** build a team, write a rotation, run it, read the results. What exists so far:
 
 - The **Run** screen: choose 100, 500 (default) or 1000 iterations and press Run. The simulation is shared across several workers (parallel copies of the engine), with a progress bar, a live DPS preview and a **Cancel** button. Mistakes in the config are shown with gcsim's own error message. A run keeps going if you switch tabs.
 - The **Results** screen shows the last finished run:
@@ -15,8 +15,9 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
   - reaction counts
   - all time lost to failed actions (skill cooldown, burst energy, stamina and so on)
 - The **Team** screen: four slots, each with a searchable character picker, level, constellation, base talent levels, weapon (only types the character can use), weapon level, refinement, artifact sets (4-piece, 2 + 2 or none) and artifact stat totals. It shows each character's stat totals (character, weapon and artifacts, before passives, set effects and team buffs, which gcsim applies itself) and the gcsim lines for the team. The team is saved on this device automatically. Characters gcsim doesn't support yet get a warning and are skipped (see below).
-- The Run screen starts with **no team**. Until the Team and Rotation screens exist, you can paste any gcsim config, or tap **Load placeholder test team** to check the engine works (see below).
-- The Rotation and History tabs are placeholders. The Rotation screen (next step) will combine your Team with a rotation so you can run it.
+- The **Rotation** screen: type the rotation the community way, for example `Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2`, one turn per character (separated by `>` or new lines). Each turn starts with the character's name (any word of it, or tap the name chips). A live preview shows the gcsim line for every turn and highlights unknown moves straight away. Fight settings live here too: fight length, enemy level, enemy resistance, number of enemies (1 to 5; extra enemies stand 4.1 m apart so they don't overlap) and random energy. The shorthand table (`E = skill`, `N = attack`, and character-specific entries like `Neuvillette: C = charge`) can be edited in the app. Rotation, settings and table are saved on this device.
+- The **Run** screen runs **Team + Rotation** by default and lists anything that still needs fixing. You can still choose **Paste a gcsim config** to run any config, or load the placeholder test team there (see below).
+- The History tab is a placeholder (next step).
 - Offline support: after the first visit, the app and the gcsim engine are saved on the device.
 - Automatic testing, building and publishing with GitHub Actions (see below).
 
@@ -24,7 +25,7 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
 
 `reference/sample_gcsim_config.txt` is a **placeholder test team**: C0 Neuvillette, Kazuha, Furina and Xilonen with builds chosen for testing. **They are not the owner's real builds.** It is used only as a test case, to confirm the app gives the same answers as gcsim, which reported about 35,100 team DPS for it (`reference/sample_gcsim_result.json`).
 
-- It is never loaded as a default team. In the app it only appears if you tap **Load placeholder test team**, and it is then labelled "Placeholder test team" on the Run and Results screens.
+- It is never loaded as a default team. In the app it only appears if you choose **Paste a gcsim config** on the Run screen and tap **Load placeholder test team**, and it is then labelled "Placeholder test team" on the Run and Results screens.
 - GitHub Actions runs it after every engine build and fails the build if the DPS is more than 10% away from 35,100.
 - Any numbers from it, such as character DPS shares or warnings about waiting for energy, describe the placeholder builds, not a real team.
 
@@ -77,7 +78,7 @@ npm test              # run the automatic tests
 npm run build         # type-check and build the production app into dist/
 ```
 
-Project layout: `src/` app code (`src/engine/` runs gcsim in workers, `src/results/` turns gcsim's results into readable rows, `src/team/` holds the team model, stat totals and gcsim line generator, `src/data/` loads the game data, `src/screens/` holds each screen), `public/` icons and (after `npm run engine`) the engine, `scripts/` engine build and test scripts plus the data-generation prototypes, `data/` game data, `reference/` the original workbook and the placeholder test team (see `reference/README.md`).
+Project layout: `src/` app code (`src/engine/` runs gcsim in workers, `src/results/` turns gcsim's results into readable rows, `src/team/` holds the team model, stat totals and gcsim line generator, `src/rotation/` translates rotation notation, `src/config/` builds the full gcsim config, `src/data/` loads the game data, `src/screens/` holds each screen), `public/` icons and (after `npm run engine`) the engine, `scripts/` engine build and test scripts plus the data-generation prototypes, `data/` game data, `reference/` the original workbook and the placeholder test team (see `reference/README.md`).
 
 ## Licence
 

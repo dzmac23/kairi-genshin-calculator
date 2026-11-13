@@ -10,7 +10,14 @@ export type SimState =
   | { phase: 'error'; message: string; isConfigError: boolean };
 
 /** The most recent successful run, kept for the Results screen while the next one runs. */
-export type FinishedRun = { result: SimResult; seconds: number; finishedAt: Date; config: string };
+export type FinishedRun = {
+  result: SimResult;
+  seconds: number;
+  finishedAt: Date;
+  config: string;
+  /** Things to show with the results, e.g. a character that was skipped. */
+  notes: string[];
+};
 
 const pool = new SimPool();
 
@@ -20,7 +27,7 @@ export function useSimulation() {
   const [lastRun, setLastRun] = useState<FinishedRun | undefined>(undefined);
   const lastProgress = useRef<Progress | undefined>(undefined);
 
-  const run = useCallback(async (config: string) => {
+  const run = useCallback(async (config: string, notes: string[] = []) => {
     setState({ phase: 'starting' });
     lastProgress.current = undefined;
     let startedAt = 0;
@@ -32,7 +39,7 @@ export function useSimulation() {
       });
       const seconds = (performance.now() - startedAt) / 1000;
       setState({ phase: 'done', result, seconds });
-      setLastRun({ result, seconds, finishedAt: new Date(), config });
+      setLastRun({ result, seconds, finishedAt: new Date(), config, notes });
     } catch (error) {
       if (error instanceof CancelledError) {
         setState({ phase: 'cancelled', progress: lastProgress.current });
