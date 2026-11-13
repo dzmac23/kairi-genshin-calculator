@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
 import { useGameData, type GameData, type LevelKey } from '../data/gameData';
@@ -6,11 +6,11 @@ import { checkTeam, teamToGcsim } from '../team/gcsim';
 import { ARTIFACT_STATS, CHARACTER_LEVELS, emptySlot, WEAPON_LEVELS, type Slot, type Team } from '../team/model';
 import { computeStats } from '../team/stats';
 
-type Props = { team: Team; onChange: (team: Team) => void; onGoToRotation: () => void };
+type Props = { team: Team; onChange: (team: Team) => void; onGoToRotation: () => void; header?: ReactNode };
 
 const TALENT_NAMES = ['Normal Attack', 'Elemental Skill', 'Elemental Burst'];
 
-export default function TeamScreen({ team, onChange, onGoToRotation }: Props) {
+export default function TeamScreen({ team, onChange, onGoToRotation, header }: Props) {
   const data = useGameData();
   const [active, setActive] = useState(0);
 
@@ -28,6 +28,7 @@ export default function TeamScreen({ team, onChange, onGoToRotation }: Props) {
 
   return (
     <>
+      {header}
       <section className="card">
         <h2>Team</h2>
         <p className="muted small">

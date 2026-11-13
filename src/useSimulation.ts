@@ -17,6 +17,9 @@ export type SimState =
 export type RunMeta = {
   source: 'team' | 'paste';
   label?: string;
+  /** Saved team and rotation names, when the run used them unchanged (see teams/model.ts). */
+  teamName?: string;
+  rotationLabel?: string;
   team?: Team;
   rotation?: RotationText;
   settings?: SimSettings;

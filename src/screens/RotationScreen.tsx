@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
 import type { BuildResult } from '../config/build';
 import { MAX_ENEMIES, type SimSettings } from '../config/settings';
@@ -16,6 +16,7 @@ type Props = {
   built?: BuildResult;
   onGoToRun: () => void;
   onGoToTeam: () => void;
+  header?: ReactNode;
 };
 
 const EXAMPLES = {
@@ -38,6 +39,7 @@ export default function RotationScreen(props: Props) {
 
   return (
     <>
+      {props.header}
       <section className="card">
         <h2>Rotation</h2>
         <p className="muted small">
