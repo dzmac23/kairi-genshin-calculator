@@ -19,6 +19,7 @@ export type GcsimResult = {
     iterations?: number;
     duration?: Stat;
     dps: Stat;
+    total_damage?: Stat;
     character_dps?: Stat[];
     field_time?: Stat[];
     end_stats?: { ending_energy?: Stat }[];
@@ -121,6 +122,8 @@ export type WarningRow = {
 
 export type ResultsView = {
   teamDps: Stat;
+  /** Team damage over the whole fight (gcsim's total_damage; DPS × fight length if missing). */
+  totalDamage: Stat;
   /** How precise the average is: about 95% of the time the true average is within ± this. */
   precision: number;
   iterations: number;
@@ -197,6 +200,9 @@ export function sourceName(source: string): string {
   if (normal) return `Normal Attack (hit ${Number(normal[1]) + 1})`;
   return /^[a-z]+(-[a-z]+)?$/.test(source) ? reactionName(source) : source;
 }
+
+/** A stat multiplied by a constant (used to turn DPS into damage over a fixed fight length). */
+const scaleStat = (st: Stat, k: number): Stat => ({ mean: st.mean * k, min: st.min * k, max: st.max * k, sd: st.sd * k });
 
 const zero: Stat = { mean: 0, min: 0, max: 0, sd: 0 };
 
@@ -314,6 +320,7 @@ export function summarize(result: GcsimResult): ResultsView {
   const iterations = s.iterations ?? 0;
   return {
     teamDps: s.dps,
+    totalDamage: s.total_damage ?? scaleStat(s.dps, s.duration?.mean ?? 0),
     precision: iterations > 1 ? (1.96 * s.dps.sd) / Math.sqrt(iterations) : 0,
     iterations,
     duration,

@@ -382,3 +382,6 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .step-num { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: #1e3346; color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; }
 .steps p { margin: 0.1rem 0 0; }
 .step-title { font-weight: 600; text-decoration: none; }
+
+.total-damage { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.35rem; font-variant-numeric: normal; }
+.total-damage .muted { font-size: 0.9rem; font-weight: 400; }

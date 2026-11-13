@@ -254,6 +254,9 @@ function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
     <section className="card">
       <h2>Team DPS</h2>
       <p className="big hero">{fmt(view.teamDps.mean)}</p>
+      <p className="total-damage">
+        {fmt(view.totalDamage.mean)} <span className="muted">total damage over the {secs(view.duration)} fight</span>
+      </p>
       <p className="precision">Accurate to about ±{fmt(view.precision)}</p>
       <Info>
         Every simulated fight is a little different (crits, energy drops), so the team DPS is an average. With{' '}
@@ -264,8 +267,10 @@ function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
       <dl className="stats">
         <dt>Typical spread between fights</dt>
         <dd>±{fmt(view.teamDps.sd)}</dd>
-        <dt>Worst – best fight</dt>
+        <dt>Worst – best fight (DPS)</dt>
         <dd>{range(view.teamDps, fmt)}</dd>
+        <dt>Worst – best fight (total damage)</dt>
+        <dd>{range(view.totalDamage, fmt)}</dd>
         <dt>Simulated fights</dt>
         <dd>{view.iterations.toLocaleString()}</dd>
         <dt>Fight length</dt>

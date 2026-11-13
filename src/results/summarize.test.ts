@@ -8,6 +8,13 @@ const sample: GcsimResult = JSON.parse(readFileSync('reference/sample_gcsim_resu
 const view = summarize(sample);
 
 describe('summarize (placeholder test team)', () => {
+  it('reads total damage over the fight, which is DPS × fight length', () => {
+    expect(Math.round(view.totalDamage.mean)).toBe(3161384);
+    expect(view.totalDamage.mean).toBeCloseTo(view.teamDps.mean * 90, 0);
+    const noTotal = summarize({ statistics: { dps: { mean: 100, min: 90, max: 110, sd: 5 }, duration: { mean: 60, min: 60, max: 60, sd: 0 } } });
+    expect(noTotal.totalDamage).toEqual({ mean: 6000, min: 5400, max: 6600, sd: 300 });
+  });
+
   it('reads team DPS, iterations and fight length', () => {
     expect(Math.round(view.teamDps.mean)).toBe(35126);
     expect(view.iterations).toBe(500);
