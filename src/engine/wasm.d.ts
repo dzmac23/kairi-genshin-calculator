@@ -9,6 +9,7 @@ declare class Go {
 }
 
 declare function validateConfig(cfg: string): string;
+declare function sample(cfg: string, seed: string): string;
 declare function initializeWorker(cfg: string): string | null;
 declare function simulate(): Uint8Array | string;
 declare function initializeAggregator(cfg: string): string;

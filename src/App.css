@@ -217,3 +217,11 @@ textarea.rotation-input { min-height: 6rem; font-size: 0.95rem; }
 .toggle input { width: 1.25rem; height: 1.25rem; min-height: 0; margin-top: 0.15rem; accent-color: var(--accent); }
 .button-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
 .button-row .secondary { margin-top: 0; }
+
+/* Step 5b: opener/loop boxes, notation guide, rotation timing */
+.rotation-box { margin-top: 0.75rem; }
+textarea.config.rotation-input.short-input { min-height: 3.5rem; }
+.notation-help { margin-bottom: 0.75rem; }
+.notation-help .table td:first-child { white-space: nowrap; padding-right: 0.75rem; }
+.turn-index { min-width: 1.1rem; }
+.turn-text { font-size: 0.8rem; background: none; padding: 0; word-break: break-word; }

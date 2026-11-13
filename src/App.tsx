@@ -3,7 +3,8 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { buildConfig, teamMembers } from './config/build';
 import { cleanSettings, DEFAULT_SETTINGS } from './config/settings';
 import { useGameData } from './data/gameData';
-import { DEFAULT_TOKEN_TABLE, parseTokenTable } from './rotation/tokens';
+import type { RotationText } from './rotation/notation';
+import { DEFAULT_TOKEN_TABLE, OLD_DEFAULT_TOKEN_TABLES, parseTokenTable } from './rotation/tokens';
 import HomeScreen from './screens/HomeScreen';
 import RotationScreen from './screens/RotationScreen';
 import ResultsScreen from './screens/ResultsScreen';
@@ -29,10 +30,15 @@ export default function App() {
   const [source, setSource] = useState<RunSource>('team');
   // The team, rotation, fight settings and shorthand table, all saved on this device.
   const { team, setTeam } = useTeam();
-  const [rotation, setRotation] = usePersistentState('rotation', '', (v) => (typeof v === 'string' ? v : undefined));
+  const [rotation, setRotation] = usePersistentState<RotationText>('rotation', { opener: '', loop: '' }, (v) => {
+    if (typeof v === 'string') return { opener: '', loop: v }; // saved by Step 5, before the Opener existed
+    const r = v as Partial<RotationText> | undefined;
+    return r && typeof r === 'object' ? { opener: String(r.opener ?? ''), loop: String(r.loop ?? '') } : undefined;
+  });
   const [settings, setSettings] = usePersistentState('settings', DEFAULT_SETTINGS, (v) => cleanSettings(v ?? {}));
   const [tokenTable, setTokenTable] = usePersistentState('tokenTable', DEFAULT_TOKEN_TABLE, (v) =>
-    typeof v === 'string' ? v : undefined,
+    // An unedited copy of an older built-in table is upgraded (e.g. to add W = walk).
+    typeof v === 'string' ? (OLD_DEFAULT_TOKEN_TABLES.includes(v) ? DEFAULT_TOKEN_TABLE : v) : undefined,
   );
   const data = useGameData();
   const parsedTable = useMemo(() => parseTokenTable(tokenTable), [tokenTable]);
@@ -105,7 +111,16 @@ export default function App() {
             onGoTo={setScreen}
             config={config}
             onConfigChange={setConfig}
-            onRun={simulation.run}
+            onRun={(runConfig, notes) =>
+              simulation.run(
+                runConfig,
+                notes,
+                // Rotation timing needs the turn markers, so only Team + Rotation runs get it.
+                source === 'team' && built?.timingConfig
+                  ? { config: built.timingConfig, turns: built.translation.turns, durationSeconds: cleanSettings(settings).duration }
+                  : undefined,
+              )
+            }
             onCancel={simulation.cancel}
             onShowResults={() => setScreen('Results')}
           />

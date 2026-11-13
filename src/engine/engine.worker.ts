@@ -60,6 +60,12 @@ async function handle(req: WorkerRequest): Promise<Omit<Extract<WorkerReply, { o
     case 'add':
       throwIfError(aggregate(req.summary));
       return {};
+    case 'markers': {
+      const out = sample(req.config, req.seed);
+      throwIfError(out);
+      const logs: { frame: number; msg: string }[] = JSON.parse(out).logs ?? [];
+      return { markers: logs.filter((l) => /^kc [ol]\d+$/.test(l.msg)).map((l) => ({ frame: l.frame, msg: l.msg })) };
+    }
     case 'flush': {
       const flushed = flush();
       throwIfError(flushed);
