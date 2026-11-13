@@ -10,6 +10,8 @@ type Props = {
   onOpen: (id: string) => void;
   onRename: (id: string, label: string) => void;
   onDelete: (ids: string[]) => void;
+  /** Compares two selected runs (older as Scenario A). */
+  onCompare: (ids: string[]) => void;
   /** Opens the shared Import screen for a chosen file (runs, teams or a full backup). */
   onImportFile: (file: File) => void;
   /** Puts a run's team, rotation and fight settings back on the Team and Rotation screens. */
@@ -100,6 +102,11 @@ export default function HistoryScreen(props: Props) {
         {selected.size > 0 && (
           <div className="selection-bar">
             <span>{selected.size} selected</span>
+            {selected.size === 2 && (
+              <button className="small-button" onClick={() => props.onCompare([...selected])}>
+                Compare
+              </button>
+            )}
             <button className="secondary small-button" onClick={() => exportRuns(chosenRuns, false)}>
               Export
             </button>

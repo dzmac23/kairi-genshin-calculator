@@ -35,10 +35,12 @@ type Props = {
   /** True when showing a run opened from the History rather than the latest one. */
   olderRun?: boolean;
   onShowLatest?: () => void;
+  /** Makes this run Scenario A on the Compare screen, with the next run as B. */
+  onCompare?: () => void;
   onGoToRun: () => void;
 };
 
-export default function ResultsScreen({ run, name, label, onRename, olderRun, onShowLatest, onGoToRun }: Props) {
+export default function ResultsScreen({ run, name, label, onRename, olderRun, onShowLatest, onCompare, onGoToRun }: Props) {
   const view = useMemo(() => (run ? summarize(run.result as GcsimResult) : undefined), [run]);
 
   if (!run || !view) {
@@ -74,6 +76,14 @@ export default function ResultsScreen({ run, name, label, onRename, olderRun, on
       )}
 
       <Summary view={view} run={run} />
+      {onCompare && (
+        <div className="compare-cta">
+          <button className="secondary small-button" onClick={onCompare}>
+            Compare a change…
+          </button>
+          <span className="muted small">Make this Scenario A, change something, run again and see the difference.</span>
+        </div>
+      )}
 
       <nav className="jump" aria-label="Jump to a section">
         {SECTIONS.filter((s) => s.id !== 'timing' || hasTiming).map((s) => (

@@ -13,6 +13,7 @@ import { makeFile, readTransferFile, type TransferPreview } from './transfer';
 import { useHistory } from './history/useHistory';
 import type { RotationText } from './rotation/notation';
 import { DEFAULT_TOKEN_TABLE, OLD_DEFAULT_TOKEN_TABLES, parseTokenTable } from './rotation/tokens';
+import CompareScreen, { type Side } from './screens/CompareScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import HomeScreen from './screens/HomeScreen';
 import RotationScreen from './screens/RotationScreen';
@@ -23,7 +24,7 @@ import { useTeam } from './team/useTeam';
 import { usePersistentState } from './usePersistentState';
 import { useSimulation, type FinishedRun } from './useSimulation';
 
-const screens = ['Home', 'Team', 'Rotation', 'Run', 'Results', 'History'] as const;
+const screens = ['Home', 'Team', 'Rotation', 'Run', 'Results', 'Compare', 'History'] as const;
 type Screen = (typeof screens)[number];
 
 /** A saved run as the Results screen shows it. */
@@ -140,6 +141,17 @@ export default function App() {
   };
 
   // One import flow for every Import button: read the file, preview it, then add what was chosen.
+  // Compare: Scenario A and B (from History, or a run file that isn't added to History), and
+  // whether each new run should become Scenario B ("tweak and compare").
+  const [compareA, setCompareA] = useState<RunRecord | undefined>();
+  const [compareB, setCompareB] = useState<RunRecord | undefined>();
+  const [compareAuto, setCompareAuto] = useState(false);
+  // The run-saving code below reads this after the run finishes, so it needs the latest value.
+  const compareAutoRef = useRef(false);
+  const fresh = (r?: RunRecord) => (r ? (history.runs.find((x) => x.id === r.id) ?? r) : undefined); // picks up renames
+  compareAutoRef.current = compareAuto;
+  const pickScenario = (side: Side, r: RunRecord | undefined) => (side === 'a' ? setCompareA(r) : setCompareB(r));
+
   const [importPreview, setImportPreview] = useState<TransferPreview | null>(null);
   const [importDone, setImportDone] = useState('');
   const openImport = async (file: File) => {
@@ -195,7 +207,7 @@ export default function App() {
     let cancelled = false;
     getEngineVersion().then((v) => {
       if (cancelled) return;
-      history.save({
+      const record: RunRecord = {
         id: r.id,
         createdAt: r.finishedAt.toISOString(),
         label: r.meta.label?.trim() || undefined,
@@ -212,7 +224,10 @@ export default function App() {
         seconds: r.seconds,
         result: r.result,
         timing: typeof r.timing === 'object' ? r.timing : undefined,
-      });
+      };
+      history.save(record);
+      // "Tweak and compare": the new run becomes Scenario B.
+      if (compareAutoRef.current) setCompareB(record);
     });
     return () => {
       cancelled = true;
@@ -378,6 +393,31 @@ export default function App() {
             onShowLatest={simulation.lastRun ? () => setViewedRunId(undefined) : undefined}
             onRename={shownRecord ? (label) => history.rename(shownRecord.id, label) : undefined}
             label={shownRecord?.label}
+            onCompare={
+              shownRecord
+                ? () => {
+                    setCompareA(shownRecord);
+                    setCompareB(undefined);
+                    setCompareAuto(true);
+                    setScreen('Compare');
+                  }
+                : undefined
+            }
+            onGoToRun={() => setScreen('Run')}
+          />
+        )}
+        {screen === 'Compare' && (
+          <CompareScreen
+            runs={history.runs}
+            a={fresh(compareA)}
+            b={fresh(compareB)}
+            onPick={pickScenario}
+            onSwap={() => {
+              setCompareA(compareB);
+              setCompareB(compareA);
+            }}
+            autoB={compareAuto}
+            onAutoB={setCompareAuto}
             onGoToRun={() => setScreen('Run')}
           />
         )}
@@ -395,6 +435,12 @@ export default function App() {
               if (viewedRunId && ids.includes(viewedRunId)) setViewedRunId(undefined);
             }}
             onImportFile={openImport}
+            onCompare={(ids) => {
+              const [older, newer] = history.runs.filter((r) => ids.includes(r.id)).sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+              setCompareA(older);
+              setCompareB(newer);
+              setScreen('Compare');
+            }}
             onLoad={(r) => {
               // The loaded team and rotation are a copy, not a saved team being edited.
               setActive({});
