@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { summarize, type GcsimResult, type Stat } from '../results/summarize';
 import { isPlaceholderConfig, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
+import type { RotationTiming, Span } from '../rotation/timing';
 import type { FinishedRun } from '../useSimulation';
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
@@ -121,6 +122,8 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
         </div>
       </section>
 
+      <RotationTimingCard timing={run.timing} />
+
       <section className="card">
         <h2>Damage by source</h2>
         <p className="muted small">Every attack, highest first, as DPS and share of the team total.</p>
@@ -151,22 +154,25 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
 
       <section className="card">
         <h2>Reactions</h2>
-        {view.reactions.length === 0 ? (
+        {view.reactionTotals.length === 0 ? (
           <p className="muted">No reactions in this run.</p>
         ) : (
           <table className="table">
             <thead>
               <tr>
                 <th>Reaction</th>
-                <th>Triggered by</th>
                 <th className="num">Per fight</th>
               </tr>
             </thead>
             <tbody>
-              {view.reactions.map((r) => (
-                <tr key={`${r.reaction}|${r.character}`}>
-                  <td>{r.reaction}</td>
-                  <td>{r.character}</td>
+              {view.reactionTotals.map((r) => (
+                <tr key={r.reaction}>
+                  <td>
+                    {r.reaction}
+                    <div className="muted small">
+                      {r.by.map((b) => `${b.character} ${b.perFight.toFixed(1)}`).join(' · ')}
+                    </div>
+                  </td>
                   <td className="num">{r.perFight.toFixed(1)}</td>
                 </tr>
               ))}
@@ -207,5 +213,93 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
         )}
       </section>
     </>
+  );
+}
+
+const sec = (s: Span) => `${s.mean.toFixed(1)} s`;
+const spread = (s: Span) => (s.max - s.min >= 0.05 ? `${s.min.toFixed(1)}–${s.max.toFixed(1)} s` : '');
+
+function RotationTimingCard({ timing }: { timing: FinishedRun['timing'] }) {
+  if (!timing) return null; // pasted configs have no turn markers
+  if (timing === 'measuring') {
+    return (
+      <section className="card">
+        <h2>Rotation timing</h2>
+        <p className="muted">Measuring rotation timing…</p>
+      </section>
+    );
+  }
+  if (timing === 'failed') {
+    return (
+      <section className="card">
+        <h2>Rotation timing</h2>
+        <p className="muted">Rotation timing couldn't be measured for this run.</p>
+      </section>
+    );
+  }
+  return <RotationTimingTable timing={timing} />;
+}
+
+function RotationTimingTable({ timing }: { timing: RotationTiming }) {
+  return (
+    <section className="card">
+      <h2>Rotation timing</h2>
+      <dl className="stats">
+        {timing.opener && (
+          <>
+            <dt>Opener</dt>
+            <dd>{sec(timing.opener)}</dd>
+          </>
+        )}
+        <dt>One loop</dt>
+        <dd>
+          {timing.loop ? (
+            <>
+              {sec(timing.loop)} {spread(timing.loop) && <span className="muted small">({spread(timing.loop)})</span>}
+            </>
+          ) : (
+            'longer than the fight'
+          )}
+        </dd>
+        {timing.loopsPerFight !== undefined && (
+          <>
+            <dt>Loops per fight</dt>
+            <dd>{timing.loopsPerFight.toFixed(1)}</dd>
+          </>
+        )}
+      </dl>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Turn</th>
+            <th className="num">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {timing.turns.map((t) => (
+            <tr key={`${t.section}${t.index}`}>
+              <td>
+                <span className="muted small">{t.section === 'opener' ? `Opener ${t.index}` : `Loop ${t.index}`} · </span>
+                <code className="turn-text">{t.text}</code>
+                {t.skipped > 0 && (
+                  <div className="muted small">
+                    Skipped in {t.skipped} of {t.measured} {t.section === 'opener' ? 'fights' : 'loops'}
+                  </div>
+                )}
+              </td>
+              <td className="num">
+                {t.time ? sec(t.time) : '–'}
+                {t.time && spread(t.time) && <div className="muted small">{spread(t.time)}</div>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">
+        Averaged over {timing.replays} replayed fights. A turn runs from when gcsim starts it to when the next turn
+        starts, so swaps and any waiting count toward the turn, and the Loop turns add up to one loop. Only complete
+        loops are counted.
+      </p>
+    </section>
   );
 }

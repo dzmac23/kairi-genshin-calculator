@@ -72,6 +72,25 @@ describe('names', () => {
     expect(reactionName('hyperbloom')).toBe('Hyperbloom');
   });
 
+  it("renames gcsim's \"Normal 0\" style sources, counting hits from 1", () => {
+    expect(sourceName('Normal 0')).toBe('Normal Attack (hit 1)');
+    expect(sourceName('Normal 3')).toBe('Normal Attack (hit 4)');
+  });
+
+  it('totals each reaction across the team', () => {
+    const r = summarize({
+      character_details: [{ name: 'furina' }, { name: 'skirk' }],
+      statistics: {
+        dps: { mean: 1, min: 1, max: 1, sd: 0 },
+        source_reactions: [{ sources: { freeze: { mean: 3.3, min: 0, max: 0, sd: 0 } } }, { sources: { freeze: { mean: 39.3, min: 0, max: 0, sd: 0 } } }],
+      },
+    });
+    expect(r.reactionTotals).toHaveLength(1);
+    expect(r.reactionTotals[0].reaction).toBe('Freeze');
+    expect(r.reactionTotals[0].perFight).toBeCloseTo(42.6);
+    expect(r.reactionTotals[0].by.map((b) => b.character)).toEqual(['Skirk', 'Furina']);
+  });
+
   it('labels reaction damage sources but leaves in-game attack names alone', () => {
     expect(sourceName('swirl-hydro')).toBe('Swirl (Hydro)');
     expect(sourceName('Charged Attack: Equitable Judgment')).toBe('Charged Attack: Equitable Judgment');

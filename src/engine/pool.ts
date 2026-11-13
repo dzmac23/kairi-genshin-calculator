@@ -148,6 +148,16 @@ export class SimPool {
     await this.aggregator!.call({ type: 'validate', config });
   }
 
+  /**
+   * Replays `seeds.length` fights of a config with markers (see rotation/timing.ts) and returns each
+   * fight's markers. Spread over the sim workers; each replay is one fight, so this is quick.
+   */
+  async markers(config: string, seeds: string[]): Promise<{ frame: number; msg: string }[][]> {
+    await this.start();
+    const sims = this.sims;
+    return Promise.all(seeds.map((seed, i) => sims[i % sims.length].call({ type: 'markers', config, seed }).then((r) => r.markers ?? [])));
+  }
+
   /** Stops the current run. Its run() promise rejects with CancelledError. */
   cancel() {
     this.abort?.(new CancelledError());

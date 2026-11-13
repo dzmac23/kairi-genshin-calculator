@@ -4,7 +4,7 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
 
 ## Status
 
-**Phase 1, step 5 of 7: the Rotation screen. The app is now usable:** build a team, write a rotation, run it, read the results. What exists so far:
+**Phase 1, step 5b: rotation upgrades. The app is usable:** build a team, write a rotation, run it, read the results. What exists so far:
 
 - The **Run** screen: choose 100, 500 (default) or 1000 iterations and press Run. The simulation is shared across several workers (parallel copies of the engine), with a progress bar, a live DPS preview and a **Cancel** button. Mistakes in the config are shown with gcsim's own error message. A run keeps going if you switch tabs.
 - The **Results** screen shows the last finished run:
@@ -14,8 +14,9 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
   - every damage source from highest to lowest
   - reaction counts
   - all time lost to failed actions (skill cooldown, burst energy, stamina and so on)
+  - **rotation timing** for Team + Rotation runs: opener length, loop length, loops per fight and the time of every turn, averaged over 10 replayed fights
 - The **Team** screen: four slots, each with a searchable character picker, level, constellation, base talent levels, weapon (only types the character can use), weapon level, refinement, artifact sets (4-piece, 2 + 2 or none) and artifact stat totals. It shows each character's stat totals (character, weapon and artifacts, before passives, set effects and team buffs, which gcsim applies itself) and the gcsim lines for the team. The team is saved on this device automatically. Characters gcsim doesn't support yet get a warning and are skipped (see below).
-- The **Rotation** screen: type the rotation the community way, for example `Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2`, one turn per character (separated by `>` or new lines). Each turn starts with the character's name (any word of it, or tap the name chips). A live preview shows the gcsim line for every turn and highlights unknown moves straight away. Fight settings live here too: fight length, enemy level, enemy resistance, number of enemies (1 to 5; extra enemies stand 4.1 m apart so they don't overlap) and random energy. The shorthand table (`E = skill`, `N = attack`, and character-specific entries like `Neuvillette: C = charge`) can be edited in the app. Rotation, settings and table are saved on this device.
+- The **Rotation** screen: an **Opener** (runs once) and a **Loop** (repeats), written the community way, for example `Furina E D Q > Escoffier E Q > Shenhe hE Q tE? > Skirk tE N5 Q N5 D N3 C N3 W`. Each turn starts with the character's name (any word of it, or tap the name chips). Besides the shorthand moves (`E`, `hE`, `Q`, `N5`, `C`, `N2C`, `P`, `lP`, `D`, `J`, `W`…) you can write `Q?` (only if ready), `Q@1/2` (loops 1, 3, 5…), `Q@2+` (from loop 2), `Q?|E` (burst if ready, otherwise skill) and lines starting with `!` in gcsim's own language. A turn with nothing to do in a loop is skipped, swap included. The Notation guide on the screen lists everything, and a live preview shows the gcsim code for every turn. Fight settings live here too: fight length, enemy level, enemy resistance, number of enemies (1 to 5; extra enemies stand 4.1 m apart so they don't overlap) and random energy. The shorthand table can be edited in the app. Rotation, settings and table are saved on this device.
 - The **Run** screen runs **Team + Rotation** by default and lists anything that still needs fixing. You can still choose **Paste a gcsim config** to run any config, or load the placeholder test team there (see below).
 - The History tab is a placeholder (next step).
 - Offline support: after the first visit, the app and the gcsim engine are saved on the device.

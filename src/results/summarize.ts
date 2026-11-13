@@ -86,6 +86,8 @@ export type CharacterRow = {
 
 export type SourceRow = { character: string; element: string; source: string; dps: number; share: number };
 export type ReactionRow = { reaction: string; character: string; perFight: number };
+/** One reaction across the whole team, with who triggered it (highest first). */
+export type ReactionTotal = { reaction: string; perFight: number; by: { character: string; perFight: number }[] };
 export type TimeLostRow = { kind: FailureKind; label: string; character: string; seconds: Stat };
 export type WarningRow = {
   kind: FailureKind | 'target_overlap' | 'incomplete';
@@ -101,6 +103,7 @@ export type ResultsView = {
   characters: CharacterRow[];
   sources: SourceRow[];
   reactions: ReactionRow[];
+  reactionTotals: ReactionTotal[];
   timeLost: TimeLostRow[];
   warnings: WarningRow[];
 };
@@ -133,6 +136,9 @@ export function reactionName(key: string): string {
  * damage uses gcsim's reaction key ("swirl-hydro"). Give those a readable label too.
  */
 export function sourceName(source: string): string {
+  // gcsim names some characters' normal attack hits "Normal 0", "Normal 1"... (counting from 0).
+  const normal = source.match(/^Normal (\d+)$/);
+  if (normal) return `Normal Attack (hit ${Number(normal[1]) + 1})`;
   return /^[a-z]+(-[a-z]+)?$/.test(source) ? reactionName(source) : source;
 }
 
@@ -184,6 +190,15 @@ export function summarize(result: GcsimResult): ResultsView {
     .filter((row) => row.perFight > 0)
     .sort((a, b) => b.perFight - a.perFight);
 
+  const totals = new Map<string, ReactionTotal>();
+  for (const r of reactions) {
+    const t = totals.get(r.reaction) ?? { reaction: r.reaction, perFight: 0, by: [] };
+    t.perFight += r.perFight;
+    t.by.push({ character: r.character, perFight: r.perFight });
+    totals.set(r.reaction, t);
+  }
+  const reactionTotals = [...totals.values()].sort((a, b) => b.perFight - a.perFight);
+
   const timeLost: TimeLostRow[] = details
     .flatMap((_, i) =>
       FAILURE_ORDER.map((kind) => ({
@@ -231,6 +246,7 @@ export function summarize(result: GcsimResult): ResultsView {
     characters,
     sources,
     reactions,
+    reactionTotals,
     timeLost,
     warnings,
   };

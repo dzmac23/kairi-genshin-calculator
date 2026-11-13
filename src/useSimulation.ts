@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { CancelledError, ConfigError, SimPool, type Progress, type SimResult } from './engine/pool';
+import type { Turn } from './rotation/notation';
+import { FPS, measureTiming, type RotationTiming } from './rotation/timing';
 
 export type SimState =
   | { phase: 'idle' }
@@ -17,7 +19,15 @@ export type FinishedRun = {
   config: string;
   /** Things to show with the results, e.g. a character that was skipped. */
   notes: string[];
+  /** Rotation timing, measured just after the run (only for Team + Rotation runs). */
+  timing?: RotationTiming | 'measuring' | 'failed';
 };
+
+/** What's needed to measure rotation timing after a run (see rotation/timing.ts). */
+export type TimingRequest = { config: string; turns: Turn[]; durationSeconds: number };
+
+/** Number of replayed fights averaged for rotation timing. Fixed seeds, so results repeat. */
+const TIMING_REPLAYS = 10;
 
 const pool = new SimPool();
 
@@ -27,7 +37,7 @@ export function useSimulation() {
   const [lastRun, setLastRun] = useState<FinishedRun | undefined>(undefined);
   const lastProgress = useRef<Progress | undefined>(undefined);
 
-  const run = useCallback(async (config: string, notes: string[] = []) => {
+  const run = useCallback(async (config: string, notes: string[] = [], timing?: TimingRequest) => {
     setState({ phase: 'starting' });
     lastProgress.current = undefined;
     let startedAt = 0;
@@ -39,7 +49,19 @@ export function useSimulation() {
       });
       const seconds = (performance.now() - startedAt) / 1000;
       setState({ phase: 'done', result, seconds });
-      setLastRun({ result, seconds, finishedAt: new Date(), config, notes });
+      const finishedAt = new Date();
+      setLastRun({ result, seconds, finishedAt, config, notes, timing: timing ? 'measuring' : undefined });
+      if (timing) {
+        const seeds = Array.from({ length: TIMING_REPLAYS }, (_, i) => String(i + 1));
+        const update = (value: FinishedRun['timing']) =>
+          setLastRun((r) => (r && r.finishedAt === finishedAt ? { ...r, timing: value } : r));
+        pool
+          .markers(timing.config, seeds)
+          .then((markers) =>
+            update(measureTiming(markers.map((m) => ({ markers: m, endFrame: timing.durationSeconds * FPS })), timing.turns)),
+          )
+          .catch(() => update('failed'));
+      }
     } catch (error) {
       if (error instanceof CancelledError) {
         setState({ phase: 'cancelled', progress: lastProgress.current });

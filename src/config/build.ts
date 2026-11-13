@@ -5,10 +5,12 @@
 //   target lvl=L resist=R radius=2 pos=...;      (one per enemy; never hp=, see PROJECT_PLAN.md)
 //   energy every interval=480,720 amount=1;       (when random energy is on)
 //   active <first character>;
-//   while 1 { <one line per rotation turn> }
+//   <loop counters, only when the rotation uses @>
+//   <opener statements, run once>
+//   while 1 { <loop statements> }
 
 import type { GameData } from '../data/gameData';
-import { translateRotation, type TeamMember, type Translation } from '../rotation/notation';
+import { translateRotation, type RotationText, type TeamMember, type Translation, type Turn } from '../rotation/notation';
 import type { TokenTable } from '../rotation/tokens';
 import { checkTeam, num, teamToGcsim } from '../team/gcsim';
 import type { Team } from '../team/model';
@@ -17,6 +19,11 @@ import { enemyPositions, type SimSettings } from './settings';
 export type BuildResult = {
   /** The config, when nothing blocks a run. */
   config?: string;
+  /**
+   * The same config with a print("kc o1") / print("kc l3") marker before each turn. Used only for
+   * the replays that measure rotation timing (see rotation/timing.ts), never for the DPS run.
+   */
+  timingConfig?: string;
   /** Things that must be fixed before running. */
   problems: string[];
   /** Things worth knowing that don't block a run (e.g. a skipped character). */
@@ -33,10 +40,15 @@ export function teamMembers(team: Team, data: GameData): TeamMember[] {
     });
 }
 
+/** The marker printed before a turn in the timing config: "kc o2" (opener turn 2), "kc l3" (loop turn 3). */
+export function turnMarker(turn: Pick<Turn, 'section' | 'index'>): string {
+  return `kc ${turn.section === 'opener' ? 'o' : 'l'}${turn.index}`;
+}
+
 export function buildConfig(
   team: Team,
   data: GameData,
-  rotation: string,
+  rotation: RotationText,
   table: TokenTable,
   settings: SimSettings,
   iterations: number,
@@ -57,27 +69,45 @@ export function buildConfig(
   }
 
   const translation = translateRotation(rotation, teamMembers(team, data), table);
-  if (!rotation.trim()) problems.push('Rotation: type a rotation on the Rotation screen.');
-  for (const t of translation.turns) if (t.error) problems.push(`Rotation: ${t.error}`);
-  const lines = translation.turns.filter((t) => t.gcsim).map((t) => t.gcsim!);
-  if (rotation.trim() && translation.ok && lines.length === 0) problems.push('Rotation: no turn uses a character gcsim supports.');
+  const loopTurns = translation.turns.filter((t) => t.section === 'loop');
+  if (!rotation.loop.trim()) problems.push('Rotation: type a Loop on the Rotation screen.');
+  for (const t of translation.turns) {
+    if (t.error) problems.push(`Rotation (${t.section === 'opener' ? 'Opener' : 'Loop'} turn ${t.index}): ${t.error}`);
+  }
+  if (rotation.loop.trim() && translation.ok && !loopTurns.some((t) => t.statements && !t.raw)) {
+    problems.push('Rotation: no Loop turn uses a character gcsim supports.');
+  }
   if (table.errors.length) problems.push(`Shorthand table: ${table.errors[0].message}`);
 
   if (problems.length) return { problems, notes, translation };
 
-  const first = translation.turns.find((t) => t.gcsim)!.member!.key!;
-  const config = [
-    teamToGcsim(team, data),
-    '',
-    `options iteration=${iterations} duration=${num(settings.duration)} swap_delay=12;`,
-    ...enemyPositions(settings.enemies).map(
-      ([x, y]) => `target lvl=${settings.enemyLevel} resist=${num(settings.enemyResist / 100)} radius=2 pos=${num(x)},${num(y)};`,
-    ),
-    ...(settings.randomEnergy ? ['energy every interval=480,720 amount=1;'] : []),
-    `active ${first};`,
-    'while 1 {',
-    ...lines.map((l) => `  ${l}`),
-    '}',
-  ].join('\n');
-  return { config, problems, notes, translation };
+  const firstTurn = translation.turns.find((t) => t.statements && !t.raw && t.member?.key);
+  const first = firstTurn!.member!.key!;
+  const { counters } = translation;
+  const make = (markers: boolean) => {
+    const body = (section: 'opener' | 'loop', indent: string) =>
+      translation.turns
+        .filter((t) => t.section === section && t.statements)
+        .flatMap((t) => [...(markers ? [`print("${turnMarker(t)}");`] : []), ...t.statements!])
+        .map((l) => indent + l);
+    return [
+      teamToGcsim(team, data),
+      '',
+      `options iteration=${iterations} duration=${num(settings.duration)} swap_delay=12;`,
+      ...enemyPositions(settings.enemies).map(
+        ([x, y]) => `target lvl=${settings.enemyLevel} resist=${num(settings.enemyResist / 100)} radius=2 pos=${num(x)},${num(y)};`,
+      ),
+      ...(settings.randomEnergy ? ['energy every interval=480,720 amount=1;'] : []),
+      `active ${first};`,
+      ...(counters.loop ? ['let kc_loop = 0;'] : []),
+      ...counters.cycles.map((n) => `let kc_c${n} = 0;`),
+      ...body('opener', ''),
+      'while 1 {',
+      ...(counters.loop ? ['  kc_loop = kc_loop + 1;'] : []),
+      ...counters.cycles.flatMap((n) => [`  kc_c${n} = kc_c${n} + 1;`, `  if kc_c${n} > ${n} { kc_c${n} = 1; }`]),
+      ...body('loop', '  '),
+      '}',
+    ].join('\n');
+  };
+  return { config: make(false), timingConfig: make(true), problems, notes, translation };
 }

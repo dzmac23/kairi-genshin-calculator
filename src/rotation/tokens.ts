@@ -23,7 +23,11 @@ D = dash
 j = jump
 J = jump
 w = walk
+W = walk
 `;
+
+/** Earlier built-in tables, so a saved copy that was never edited is upgraded automatically. */
+export const OLD_DEFAULT_TOKEN_TABLES = [DEFAULT_TOKEN_TABLE.replace('W = walk\n', '')];
 
 export type TokenTable = {
   general: Map<string, string>;
