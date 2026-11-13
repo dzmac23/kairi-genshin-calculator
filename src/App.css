@@ -317,3 +317,20 @@ details.info p { margin: 0.35rem 0 0; }
   table.only-wide { display: table; }
   .only-narrow { display: none; }
 }
+
+/* Rotation timing pie (one loop, turn by turn) */
+.pie { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+.pie svg { width: min(220px, 70vw); height: auto; }
+.pie-slice { fill: var(--c); stroke: var(--surface); stroke-width: 2; stroke-linejoin: round; }
+.pie-slice:focus-visible { outline: none; stroke: var(--text); }
+.pie-tag { fill: #12151d; font-size: 15px; font-weight: 700; pointer-events: none; }
+.slot-other .pie-tag { fill: #fff; }
+.pie-list { list-style: none; padding: 0; margin: 0; width: 100%; font-size: 0.9rem; }
+.pie-list li { display: flex; align-items: baseline; gap: 0.4rem; padding: 0.25rem 0; border-bottom: 1px solid #ffffff0d; }
+.pie-num { min-width: 1.2rem; font-weight: 700; color: var(--muted); }
+.pie-list .swatch { margin-right: 0; }
+.pie-label { font: 0.8rem ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+@media (min-width: 768px) {
+  .pie { flex-direction: row; align-items: center; gap: 1.5rem; }
+  .pie svg { width: 220px; flex: none; }
+}

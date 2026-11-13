@@ -11,7 +11,7 @@ A Genshin Impact theorycrafting app that runs real [gcsim](https://github.com/ge
   - **Team DPS** with how precise it is ("accurate to about ±…"), the typical spread, and the worst and best fight
   - **Who does the damage:** stacked bars of each character's share of team damage and of time on field, plus a compact table
   - **Time lost:** gcsim's warnings in plain English (who waited, how long, why) and any smaller delays
-  - **Rotation timing** (Team + Rotation runs): opener and loop length, loops in the fight, a one-loop bar, and every turn's time, with turns that vary a lot flagged
+  - **Rotation timing** (Team + Rotation runs): opener and loop length, loops in the fight, a numbered pie chart of one loop, and every turn's time, with turns that vary a lot flagged
   - **Damage over the fight:** team DPS through the fight (tap for exact values, or show as a table)
   - **Damage by source**, highest first, and **Energy:** how much energy each character received and from where
   - **Reactions**, totalled per reaction

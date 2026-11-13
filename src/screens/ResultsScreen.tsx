@@ -2,7 +2,7 @@
 // sections that can be collapsed. Each character keeps its team-slot colour on every chart.
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { Legend, LineChart, SegmentedBar, slotClass, type Part } from '../components/Charts';
+import { Legend, LineChart, PieChart, SegmentedBar, slotClass, type Part, type Slice } from '../components/Charts';
 import { isPlaceholderConfig, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
 import { FAILURES, summarize, type GcsimResult, type ResultsView, type Stat } from '../results/summarize';
 import type { RotationTiming, Span, TurnTiming } from '../rotation/timing';
@@ -100,7 +100,7 @@ export default function ResultsScreen({ run, name, label, onRename, olderRun, on
       </Section>
       {hasTiming && (
         <Section id="timing" title="Rotation timing">
-          <RotationTimingSection timing={run.timing!} keyToSlot={keyToSlot} view={view} />
+          <RotationTimingSection timing={run.timing!} keyToSlot={keyToSlot} />
         </Section>
       )}
       <Section id="over-time" title="Damage over the fight">
@@ -412,33 +412,24 @@ const spread = (s: Span) => `${s.min.toFixed(1)}–${s.max.toFixed(1)} s`;
  */
 const variesALot = (s: Span) => s.max - s.min >= Math.max(1.5, s.mean * 0.3);
 
-function RotationTimingSection({
-  timing,
-  keyToSlot,
-  view,
-}: {
-  timing: FinishedRun['timing'];
-  keyToSlot: Map<string, number>;
-  view: ResultsView;
-}) {
+function RotationTimingSection({ timing, keyToSlot }: { timing: FinishedRun['timing']; keyToSlot: Map<string, number> }) {
   if (timing === 'measuring') return <p className="muted">Measuring rotation timing…</p>;
   if (timing === 'failed' || !timing) return <p className="muted">Rotation timing couldn't be measured for this run.</p>;
-  return <RotationTimingTables timing={timing} keyToSlot={keyToSlot} view={view} />;
+  return <RotationTimingTables timing={timing} keyToSlot={keyToSlot} />;
 }
 
-function RotationTimingTables({ timing, keyToSlot, view }: { timing: RotationTiming; keyToSlot: Map<string, number>; view: ResultsView }) {
+function RotationTimingTables({ timing, keyToSlot }: { timing: RotationTiming; keyToSlot: Map<string, number> }) {
   const opener = timing.turns.filter((t) => t.section === 'opener');
   const loop = timing.turns.filter((t) => t.section === 'loop');
   const loopTotal = timing.loop?.mean ?? 0;
-  const name = (t: TurnTiming) => (t.text.startsWith('!') ? 'gcsim line' : t.text.split(/\s+/)[0]);
-  const parts: Part[] = loop
+  const slices: Slice[] = loop
     .filter((t) => t.time && t.time.mean > 0)
     .map((t) => ({
-      label: `Turn ${t.index}: ${t.text}`,
+      tag: String(t.index),
+      label: t.text,
       slot: t.key ? keyToSlot.get(t.key) : undefined,
       value: t.time!.mean,
-      inside: `${name(t)} ${t.time!.mean.toFixed(1)}s`,
-      detail: `${span(t.time!)} (${pct0(t.time!.mean / (loopTotal || 1))} of the loop)`,
+      valueText: span(t.time!),
     }));
   return (
     <>
@@ -467,15 +458,16 @@ function RotationTimingTables({ timing, keyToSlot, view }: { timing: RotationTim
         )}
       </dl>
 
-      {parts.length > 0 && (
+      {slices.length > 0 && (
         <>
           <p className="bar-title">One loop, turn by turn</p>
-          <SegmentedBar parts={parts} label="One loop, turn by turn" />
-          <Legend items={view.characters.map((c) => ({ label: c.name, slot: c.slot }))} />
+          <PieChart slices={slices} label="One loop, turn by turn" />
         </>
       )}
 
-      {opener.length > 0 && <TurnTable title="Opener" turns={opener} total={timing.opener} keyToSlot={keyToSlot} />}
+      {opener.length > 0 && (
+        <TurnTable title="Opener" turns={opener} total={timing.opener} keyToSlot={keyToSlot} shareOf={timing.opener?.mean} />
+      )}
       <TurnTable title="Loop" turns={loop} total={timing.loop} keyToSlot={keyToSlot} shareOf={loopTotal} />
 
       <details className="how-to-read">
