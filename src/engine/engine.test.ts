@@ -19,14 +19,18 @@ const table = parseTokenTable(DEFAULT_TOKEN_TABLE);
 let data: GameData;
 const error = (out: string) => (out.startsWith('{"error"') ? JSON.parse(out).error : undefined);
 
-describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', () => {
+// The real engine is slow next to ordinary tests (it simulates whole fights), and GitHub's machines
+// vary in speed, so these tests get a generous time limit instead of Vitest's default 5 seconds.
+const ENGINE_TIMEOUT = 60_000;
+
+describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { timeout: ENGINE_TIMEOUT }, () => {
   beforeAll(async () => {
     data = await loadGameData();
     await import(pathToFileURL(`${engineDir}/wasm_exec.js`).href);
     const go = new (globalThis as unknown as { Go: new () => Go }).Go();
     const { instance } = await WebAssembly.instantiate(readFileSync(`${engineDir}/main.wasm`), go.importObject);
     void go.run(instance);
-  });
+  }, ENGINE_TIMEOUT);
 
   // Opener, ? (if ready), @ (which loops), | (otherwise), a "!" line and W (walk), all at once.
   const rotation = {
