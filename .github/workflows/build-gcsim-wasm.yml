@@ -63,8 +63,9 @@ jobs:
         with:
           node-version: 22
 
-      # Loads the engine, validates reference/sample_gcsim_config.txt, runs 100 iterations,
-      # and fails the build if team DPS is not within 10% of the known result (~35,100).
+      # Loads the engine, validates the placeholder test team in reference/sample_gcsim_config.txt
+      # (builds chosen for testing, not real builds), runs 100 iterations, and fails the build if
+      # team DPS is not within 10% of gcsim's known result for it (~35,100).
       - name: Smoke test the engine
         run: node scripts/wasm-smoke-test.mjs public/gcsim reference/sample_gcsim_config.txt 100 35100
 

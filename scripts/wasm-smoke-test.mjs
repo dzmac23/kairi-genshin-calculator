@@ -9,7 +9,9 @@
 // Usage:
 //   node scripts/wasm-smoke-test.mjs <engine dir> <config file> [iterations] [expected mean DPS]
 //
-// The engine dir must contain main.wasm and wasm_exec.js. Exits with a non-zero
+// The engine dir must contain main.wasm and wasm_exec.js. The config normally used is the
+// placeholder test team in reference/sample_gcsim_config.txt (builds chosen for testing, not
+// real builds), whose known gcsim result is about 35,100 team DPS. Exits with a non-zero
 // code if anything fails, so it can be used as a check in GitHub Actions.
 
 import { readFileSync } from 'node:fs';
