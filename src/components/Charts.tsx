@@ -63,6 +63,74 @@ export function Legend({ items }: { items: { label: string; slot?: number }[] })
   );
 }
 
+export type Slice = {
+  /** Short number printed on the slice (e.g. the turn number). */
+  tag: string;
+  /** Full description for the list and tooltip. */
+  label: string;
+  value: number;
+  slot?: number;
+  /** Value as text for the list (e.g. "9.9 s"). */
+  valueText: string;
+};
+
+/**
+ * A pie chart with numbered slices and a list beside it (number, colour, label, value, share), so
+ * slices of the same colour stay distinguishable and no label is ever cut off.
+ */
+export function PieChart({ slices, label }: { slices: Slice[]; label: string }) {
+  const total = slices.reduce((a, s) => a + Math.max(0, s.value), 0) || 1;
+  const R = 90;
+  const C = 100;
+  let angle = -Math.PI / 2; // start at 12 o'clock, go clockwise
+  const shapes = slices
+    .filter((s) => s.value > 0)
+    .map((s) => {
+      const share = s.value / total;
+      const start = angle;
+      const end = angle + share * Math.PI * 2;
+      angle = end;
+      const mid = (start + end) / 2;
+      const p = (a: number, r = R) => `${(C + r * Math.cos(a)).toFixed(2)},${(C + r * Math.sin(a)).toFixed(2)}`;
+      const large = end - start > Math.PI ? 1 : 0;
+      const d =
+        share >= 0.9999
+          ? `M${C},${C - R} A${R},${R} 0 1 1 ${C - 0.01},${C - R} Z`
+          : `M${C},${C} L${p(start)} A${R},${R} 0 ${large} 1 ${p(end)} Z`;
+      return { s, share, d, labelAt: p(mid, R * 0.62).split(',').map(Number) };
+    });
+  return (
+    <div className="pie">
+      <svg viewBox="0 0 200 200" role="img" aria-label={`${label}: ${slices.map((s) => `${s.tag} ${s.label} ${s.valueText}`).join(', ')}`}>
+        {shapes.map(({ s, share, d, labelAt }) => (
+          <g key={s.tag} className={slotClass(s.slot)}>
+            <path d={d} className="pie-slice" tabIndex={0} aria-label={`${s.tag}. ${s.label}: ${s.valueText} (${Math.round(share * 100)}%)`}>
+              <title>{`${s.tag}. ${s.label}: ${s.valueText} (${Math.round(share * 100)}%)`}</title>
+            </path>
+            {share >= 0.06 && (
+              <text x={labelAt[0]} y={labelAt[1]} className="pie-tag" textAnchor="middle" dominantBaseline="central">
+                {s.tag}
+              </text>
+            )}
+          </g>
+        ))}
+      </svg>
+      <ol className="pie-list">
+        {shapes.map(({ s, share }) => (
+          <li key={s.tag}>
+            <span className="pie-num">{s.tag}</span>
+            <span className={`swatch ${slotClass(s.slot)}`} aria-hidden="true" />
+            <span className="pie-label">{s.label}</span>
+            <span className="right">
+              {s.valueText} <span className="muted">({Math.round(share * 100)}%)</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 /** A single-series line chart over time, with a crosshair and tooltip on hover or touch. */
 export function LineChart({
   points,
