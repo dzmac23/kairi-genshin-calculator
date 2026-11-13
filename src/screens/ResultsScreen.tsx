@@ -36,6 +36,16 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
         </div>
       )}
 
+      {run.notes.length > 0 && (
+        <section className="card warnings">
+          {run.notes.map((n) => (
+            <div className="callout" key={n}>
+              <p className="small">{n}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section className="card">
         <h2>Team DPS</h2>
         <p className="big">{fmt(view.teamDps.mean)}</p>

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Segmented } from '../components/Fields';
+import type { BuildResult } from '../config/build';
 import { setIterations } from '../engine/config';
 import { workerCount } from '../engine/pool';
 import { isPlaceholderConfig, PLACEHOLDER_CONFIG, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
@@ -10,24 +12,34 @@ const ITERATION_CHOICES = [
   { value: 1000, label: '1000', hint: 'for sharing' },
 ];
 
+export type RunSource = 'team' | 'paste';
+
 type Props = {
   state: SimState;
-  /** The gcsim config to run. Kept in App so it survives switching tabs. Empty by default. */
+  /** Where the config comes from: the Team + Rotation screens, or a pasted gcsim config. */
+  source: RunSource;
+  onSourceChange: (source: RunSource) => void;
+  /** The config built from the Team and Rotation screens (undefined while game data loads). */
+  built?: BuildResult;
+  /** A pasted gcsim config. Kept in App so it survives switching tabs. Empty by default. */
   config: string;
   onConfigChange: (config: string) => void;
-  onRun: (config: string) => void;
+  onRun: (config: string, notes: string[]) => void;
   onCancel: () => void;
   onShowResults: () => void;
+  onGoTo: (screen: 'Team' | 'Rotation') => void;
 };
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
 
-export default function RunScreen({ state, config, onConfigChange, onRun, onCancel, onShowResults }: Props) {
+export default function RunScreen(props: Props) {
+  const { state, source, built, config, onConfigChange, onRun, onCancel, onShowResults } = props;
   const [iterations, setIterationChoice] = useState(500);
   const [now, setNow] = useState(performance.now());
   const busy = state.phase === 'starting' || state.phase === 'running';
-  const hasConfig = config.trim().length > 0;
   const placeholder = isPlaceholderConfig(config);
+  const runConfig = source === 'team' ? built?.config : config.trim() ? config : undefined;
+  const notes = source === 'team' ? (built?.notes ?? []) : [];
 
   // Refresh a few times a second while running, for the elapsed-time display.
   useEffect(() => {
@@ -60,50 +72,62 @@ export default function RunScreen({ state, config, onConfigChange, onRun, onCanc
       </section>
 
       <section className="card">
-        <h2>Team and rotation</h2>
-        {!hasConfig ? (
-          <>
-            <p className="muted small">
-              No team yet. The Team and Rotation screens (coming in the next steps) will fill this in for you. Until
-              then you can paste a gcsim config below, or load the placeholder test team to check the engine works.
-            </p>
-            <button className="secondary" onClick={() => onConfigChange(PLACEHOLDER_CONFIG)} disabled={busy}>
-              Load {PLACEHOLDER_LABEL.toLowerCase()}
-            </button>
-            <textarea
-              className="config short"
-              value={config}
-              onChange={(e) => onConfigChange(e.target.value)}
-              spellCheck={false}
-              disabled={busy}
-              placeholder="Paste a gcsim config here"
-              aria-label="gcsim config"
-            />
-          </>
+        <h2>What to run</h2>
+        <Segmented
+          label="Source"
+          value={source}
+          values={['team', 'paste'] as const}
+          names={{ team: 'Team + Rotation', paste: 'Paste a gcsim config' }}
+          onChange={props.onSourceChange}
+        />
+        {source === 'team' ? (
+          <TeamSource built={built} onGoTo={props.onGoTo} />
         ) : (
           <>
-            {placeholder ? (
-              <div className="placeholder-note">
-                <strong>{PLACEHOLDER_LABEL}</strong>
-                <p className="small">{PLACEHOLDER_NOTE}</p>
-              </div>
+            {!config.trim() ? (
+              <>
+                <p className="muted small">
+                  Paste any gcsim config below, or load the placeholder test team to check the engine works.
+                </p>
+                <button className="secondary" onClick={() => onConfigChange(PLACEHOLDER_CONFIG)} disabled={busy}>
+                  Load {PLACEHOLDER_LABEL.toLowerCase()}
+                </button>
+                <textarea
+                  className="config short"
+                  value={config}
+                  onChange={(e) => onConfigChange(e.target.value)}
+                  spellCheck={false}
+                  disabled={busy}
+                  placeholder="Paste a gcsim config here"
+                  aria-label="gcsim config"
+                />
+              </>
             ) : (
-              <p className="muted small">Your own gcsim config ({config.trim().split('\n').length} lines).</p>
+              <>
+                {placeholder ? (
+                  <div className="placeholder-note">
+                    <strong>{PLACEHOLDER_LABEL}</strong>
+                    <p className="small">{PLACEHOLDER_NOTE}</p>
+                  </div>
+                ) : (
+                  <p className="muted small">Your own gcsim config ({config.trim().split('\n').length} lines).</p>
+                )}
+                <details>
+                  <summary>Show or edit gcsim config</summary>
+                  <textarea
+                    className="config"
+                    value={config}
+                    onChange={(e) => onConfigChange(e.target.value)}
+                    spellCheck={false}
+                    disabled={busy}
+                    aria-label="gcsim config"
+                  />
+                </details>
+                <button className="secondary" onClick={() => onConfigChange('')} disabled={busy}>
+                  Clear
+                </button>
+              </>
             )}
-            <details>
-              <summary>Show or edit gcsim config</summary>
-              <textarea
-                className="config"
-                value={config}
-                onChange={(e) => onConfigChange(e.target.value)}
-                spellCheck={false}
-                disabled={busy}
-                aria-label="gcsim config"
-              />
-            </details>
-            <button className="secondary" onClick={() => onConfigChange('')} disabled={busy}>
-              Clear
-            </button>
           </>
         )}
       </section>
@@ -114,12 +138,58 @@ export default function RunScreen({ state, config, onConfigChange, onRun, onCanc
             Cancel
           </button>
         ) : (
-          <button className="wide" onClick={() => onRun(setIterations(config, iterations))} disabled={!hasConfig}>
-            {hasConfig ? `Run ${iterations} iterations` : 'Add a team to run'}
+          <button className="wide" onClick={() => runConfig && onRun(setIterations(runConfig, iterations), notes)} disabled={!runConfig}>
+            {runConfig ? `Run ${iterations} iterations` : source === 'team' ? 'Fix the items above to run' : 'Add a config to run'}
           </button>
         )}
         <Status state={state} now={now} onShowResults={onShowResults} />
       </section>
+    </>
+  );
+}
+
+function TeamSource({ built, onGoTo }: { built?: BuildResult; onGoTo: (screen: 'Team' | 'Rotation') => void }) {
+  if (!built) return <p className="muted">Loading game data…</p>;
+  const turns = built.translation.turns.length;
+  return (
+    <>
+      {built.problems.length > 0 ? (
+        <>
+          <ul className="problems">
+            {built.problems.map((p) => (
+              <li key={p} className="warn">
+                {p}
+              </li>
+            ))}
+          </ul>
+          <div className="button-row">
+            <button className="secondary" onClick={() => onGoTo('Team')}>
+              Go to Team
+            </button>
+            <button className="secondary" onClick={() => onGoTo('Rotation')}>
+              Go to Rotation
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="small">
+          Your team and a {turns}-turn rotation are ready.{' '}
+          <button className="link" onClick={() => onGoTo('Rotation')}>
+            Change the rotation or fight settings
+          </button>
+        </p>
+      )}
+      {built.notes.map((n) => (
+        <p key={n} className="warn small">
+          {n}
+        </p>
+      ))}
+      {built.config && (
+        <details>
+          <summary>Show gcsim config</summary>
+          <pre className="config-preview">{built.config}</pre>
+        </details>
+      )}
     </>
   );
 }
