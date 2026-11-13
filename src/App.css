@@ -103,11 +103,6 @@ progress { width: 100%; height: 0.75rem; accent-color: var(--accent); }
   border-radius: 50%; background: var(--gold); vertical-align: middle;
 }
 
-/* Element colours (used for dots and bars) */
-.el-pyro { --el: #ef7a35; } .el-hydro { --el: #4cc2f1; } .el-anemo { --el: #74c2a8; }
-.el-electro { --el: #b08fc2; } .el-dendro { --el: #a5c83b; } .el-cryo { --el: #9fd6e3; }
-.el-geo { --el: #fab632; } .el-physical { --el: #c8c8c8; }
-
 /* Results screen */
 .right { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
 .warnings .callout {
@@ -119,10 +114,9 @@ progress { width: 100%; height: 0.75rem; accent-color: var(--accent); }
 .characters { display: grid; gap: 0.75rem; }
 .character { background: #232938; border-radius: 10px; padding: 0.75rem; }
 .character-head { display: flex; align-items: center; gap: 0.5rem; }
-.element { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--el); flex: none; }
 .bar { height: 0.5rem; background: #ffffff12; border-radius: 4px; overflow: hidden; margin: 0.4rem 0; }
 .bar.thin { height: 0.3rem; margin: 0.2rem 0 0; }
-.bar span { display: block; height: 100%; background: var(--el); border-radius: 4px; }
+.bar span { display: block; height: 100%; background: var(--c); border-radius: 4px; }
 .stats.compact { margin: 0.25rem 0 0; font-size: 0.9rem; }
 .sources { list-style: none; padding: 0; margin: 0 0 0.5rem; }
 .sources li { padding: 0.45rem 0; border-bottom: 1px solid #ffffff0d; }
@@ -225,3 +219,53 @@ textarea.config.rotation-input.short-input { min-height: 3.5rem; }
 .notation-help .table td:first-child { white-space: nowrap; padding-right: 0.75rem; }
 .turn-index { min-width: 1.1rem; }
 .turn-text { font-size: 0.8rem; background: none; padding: 0; word-break: break-word; }
+
+/* Step 5c: Results redesign.
+   Team-slot colours: the reference categorical palette's dark steps (blue, orange, aqua, yellow),
+   validated on this surface (#1b1f2a) with the dataviz validator: all checks pass, worst adjacent
+   colour-blind separation dE 8.4, normal-vision dE 19.8, all >= 3:1 contrast. Text on them is
+   near-black (contrast 4.7-5.9). "Other" (drops, gear) is a neutral grey with white text. */
+.slot-0 { --c: #3987e5; } .slot-1 { --c: #d95926; } .slot-2 { --c: #199e70; } .slot-3 { --c: #c98500; }
+.slot-other { --c: #5c6478; --ink: #ffffff; }
+.hero { font-size: 3rem; line-height: 1.1; margin-bottom: 0.25rem; }
+.precision { margin-bottom: 0.75rem; }
+.jump { display: flex; gap: 0.4rem; overflow-x: auto; padding: 0 0 0.75rem; margin: 0 -0.25rem; }
+.jump .chip { flex: none; }
+details.section > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary h2 { margin: 0; }
+details.section > summary::after { content: '▾'; color: var(--muted); margin-left: auto; transition: transform 0.15s; }
+details.section:not([open]) > summary::after { transform: rotate(-90deg); }
+details.section[open] > summary { margin-bottom: 0.75rem; }
+.bar-title { margin: 0.75rem 0 0.35rem; font-size: 0.85rem; color: var(--muted); }
+.segbar { display: flex; gap: 2px; width: 100%; }
+.segbar.tall { height: 28px; }
+.segbar.thin { height: 8px; margin: 0.35rem 0; }
+.seg { background: var(--c); min-width: 2px; display: flex; align-items: center; overflow: hidden; }
+.segbar.tall .seg { border-radius: 4px; }
+.segbar.thin .seg:first-child { border-radius: 4px 0 0 4px; }
+.segbar.thin .seg:last-child { border-radius: 0 4px 4px 0; }
+.segbar.thin .seg:only-child { border-radius: 4px; }
+.seg:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+.seg-label { color: var(--ink, #12151d); font-size: 0.75rem; font-weight: 600; padding: 0 0.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; padding: 0; margin: 0.5rem 0; font-size: 0.85rem; color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 0.35rem; }
+.swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 3px; background: var(--c); margin-right: 0.4rem; vertical-align: -0.05rem; flex: none; }
+.legend .swatch { margin-right: 0; }
+.compact-table { margin-top: 0.5rem; }
+.warn-callout { border-left: 3px solid var(--warn); background: #f28b5e14; border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; }
+.turn-table td:first-child { width: 100%; }
+.turn-table .bar.thin { margin-top: 0.3rem; }
+.total-row td { font-weight: 600; border-top: 1px solid #ffffff26; }
+.how-to-read { margin-top: 0.75rem; }
+.how-to-read summary { color: var(--accent); cursor: pointer; }
+.linechart svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.linechart .grid { stroke: #ffffff14; stroke-width: 1; }
+.linechart .tick { fill: var(--muted); font-size: 11px; }
+.linechart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.linechart .crosshair { stroke: #ffffff55; stroke-width: 1; }
+.linechart .dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart-readout { color: var(--muted); margin: 0.25rem 0 0.5rem; min-height: 1.2em; }
+.energy-row { padding: 0.5rem 0; border-bottom: 1px solid #ffffff0d; }
+.energy-head { display: flex; gap: 0.75rem; align-items: baseline; font-size: 0.9rem; }
+.energy-row p { margin: 0; }

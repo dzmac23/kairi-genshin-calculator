@@ -20,6 +20,8 @@ export type TurnTiming = {
   section: Turn['section'];
   index: number;
   text: string;
+  /** gcsim key of the turn's character (for colours); undefined for "!" lines. */
+  key?: string;
   /** Time per turn, over every time it was measured (including times it was skipped, as 0 s). */
   time?: Span;
   /** How many times the turn was measured, and how many of those it was skipped (took no time). */
@@ -86,7 +88,15 @@ export function measureTiming(replays: Replay[], turns: Turn[]): RotationTiming 
       .filter((t) => t.statements)
       .map((t) => {
         const frames = turnFrames.get(`kc ${t.section === 'opener' ? 'o' : 'l'}${t.index}`) ?? [];
-        return { section: t.section, index: t.index, text: t.text, time: span(frames), measured: frames.length, skipped: frames.filter((f) => f === 0).length };
+        return {
+          section: t.section,
+          index: t.index,
+          text: t.text,
+          key: t.raw ? undefined : (t.member?.key ?? undefined),
+          time: span(frames),
+          measured: frames.length,
+          skipped: frames.filter((f) => f === 0).length,
+        };
       }),
   };
 }
