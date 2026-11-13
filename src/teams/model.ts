@@ -2,7 +2,7 @@
 // Fight settings are not part of a saved team (they change from test to test).
 
 import type { RotationText } from '../rotation/notation';
-import { emptySlot, type Team } from '../team/model';
+import { cleanSlot, emptySlot, type Team } from '../team/model';
 
 export type SavedRotation = { id: string; label: string; rotation: RotationText };
 
@@ -50,7 +50,7 @@ export function isSavedTeam(x: unknown): x is SavedTeam {
 export function cleanSavedTeam(t: SavedTeam): SavedTeam {
   return {
     ...t,
-    team: t.team.map((s) => ({ ...emptySlot(), ...s })),
+    team: t.team.map(cleanSlot),
     rotations: t.rotations.map((r) => ({ ...r, rotation: { opener: String(r.rotation.opener ?? ''), loop: String(r.rotation.loop ?? '') } })),
   };
 }

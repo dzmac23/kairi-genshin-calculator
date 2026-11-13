@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { buildConfig, teamMembers } from './config/build';
+import { buildConfig, teamMembers, type BuildResult } from './config/build';
 import { cleanSettings, DEFAULT_SETTINGS } from './config/settings';
 import { useGameData } from './data/gameData';
 import { getEngineVersion } from './engine/version';
+import ErrorBoundary from './components/ErrorBoundary';
 import ImportCard, { type ImportChoice } from './components/ImportCard';
 import { deliverFile } from './history/files';
 import { runName, type RunRecord } from './history/model';
@@ -63,10 +64,19 @@ export default function App() {
   const data = useGameData();
   const parsedTable = useMemo(() => parseTokenTable(tokenTable), [tokenTable]);
   // The config built from the Team and Rotation screens (iterations are set on the Run screen).
-  const built = useMemo(
-    () => (data ? buildConfig(team, data, rotation, parsedTable, cleanSettings(settings), 500) : undefined),
-    [data, team, rotation, parsedTable, settings],
-  );
+  const built = useMemo((): BuildResult | undefined => {
+    if (!data) return undefined;
+    try {
+      return buildConfig(team, data, rotation, parsedTable, cleanSettings(settings), 500);
+    } catch (error) {
+      // Never let unexpected data take the whole app down: show it as a problem on the Run screen.
+      return {
+        problems: [`Couldn't build the config: ${error instanceof Error ? error.message : String(error)}. Check the Team and Rotation screens.`],
+        notes: [],
+        translation: { turns: [], ok: false, counters: { loop: false, cycles: [] } },
+      };
+    }
+  }, [data, team, rotation, parsedTable, settings]);
   const running = simulation.state.phase === 'starting' || simulation.state.phase === 'running';
 
   // Run history: every successful run is saved on this device, and updated when its rotation
@@ -287,9 +297,10 @@ export default function App() {
             <button onClick={() => setImportDone('')}>OK</button>
           </div>
         )}
+        <ErrorBoundary key={screen} screen={screen}>
         {screen === 'Home' && (
           <HomeScreen
-            onStart={() => setScreen('Run')}
+            onGo={setScreen}
             onBackup={exportBackup}
             onImportFile={openImport}
             backupMessage={backupMessage}
@@ -452,6 +463,7 @@ export default function App() {
             }}
           />
         )}
+        </ErrorBoundary>
       </main>
 
     </div>

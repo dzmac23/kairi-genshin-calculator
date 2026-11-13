@@ -74,3 +74,50 @@ export function levelToGcsim(level: LevelKey): string {
   if (n === 95) return '95/100';
   return `${n}/${n}`;
 }
+
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)));
+
+/**
+ * Repairs a slot read from storage or an imported file: every field gets the right type and a
+ * sensible range, falling back to the default for anything missing or malformed.
+ */
+export function cleanSlot(raw: unknown): Slot {
+  const d = emptySlot();
+  const s = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof Slot, unknown>>;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+  const level = (v: unknown, list: LevelKey[], fallback: LevelKey) => (list.includes(v as LevelKey) ? (v as LevelKey) : fallback);
+  const talents = Array.isArray(s.talents) && s.talents.length === 3 && s.talents.every(isNum) ? (s.talents.map((t) => clamp(t, 1, 15)) as Slot['talents']) : d.talents;
+  const sets = s.sets as SetChoice | undefined;
+  const cleanSets: SetChoice =
+    sets?.mode === 'none'
+      ? { mode: 'none' }
+      : sets?.mode === '2+2'
+        ? { mode: '2+2', first: str(sets.first), second: str(sets.second) }
+        : sets?.mode === '4pc'
+          ? { mode: '4pc', set: str(sets.set) }
+          : d.sets;
+  const artifacts: Slot['artifacts'] = {};
+  if (s.artifacts && typeof s.artifacts === 'object') {
+    for (const { key } of ARTIFACT_STATS) {
+      const v = (s.artifacts as Record<string, unknown>)[key];
+      if (isNum(v)) artifacts[key] = v;
+    }
+  }
+  return {
+    character: str(s.character),
+    level: level(s.level, CHARACTER_LEVELS, d.level),
+    constellation: isNum(s.constellation) ? clamp(s.constellation, 0, 6) : d.constellation,
+    talents,
+    weapon: str(s.weapon),
+    weaponLevel: level(s.weaponLevel, WEAPON_LEVELS, d.weaponLevel),
+    refinement: isNum(s.refinement) ? clamp(s.refinement, 1, 5) : d.refinement,
+    sets: cleanSets,
+    artifacts,
+  };
+}
+
+/** A team of exactly four repaired slots, or undefined if it isn't a team at all. */
+export function cleanTeam(raw: unknown): Team | undefined {
+  return Array.isArray(raw) && raw.length === 4 ? raw.map(cleanSlot) : undefined;
+}
