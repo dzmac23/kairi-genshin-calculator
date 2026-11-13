@@ -24,6 +24,12 @@ type Props = {
   /** A pasted gcsim config. Kept in App so it survives switching tabs. Empty by default. */
   config: string;
   onConfigChange: (config: string) => void;
+  /** 100, 500 or 1000. Kept in App and saved, so the choice survives switching tabs. */
+  iterations: number;
+  onIterationsChange: (n: number) => void;
+  /** Optional name for the next run (shown in the History). */
+  label: string;
+  onLabelChange: (label: string) => void;
   onRun: (config: string, notes: string[]) => void;
   onCancel: () => void;
   onShowResults: () => void;
@@ -34,7 +40,7 @@ const fmt = (n: number) => Math.round(n).toLocaleString();
 
 export default function RunScreen(props: Props) {
   const { state, source, built, config, onConfigChange, onRun, onCancel, onShowResults } = props;
-  const [iterations, setIterationChoice] = useState(500);
+  const { iterations, onIterationsChange: setIterationChoice } = props;
   const [now, setNow] = useState(performance.now());
   const busy = state.phase === 'starting' || state.phase === 'running';
   const placeholder = isPlaceholderConfig(config);
@@ -133,6 +139,16 @@ export default function RunScreen(props: Props) {
       </section>
 
       <section className="card">
+        <label className="field">
+          <span className="field-label">Name this run (optional)</span>
+          <input
+            value={props.label}
+            onChange={(e) => props.onLabelChange(e.target.value)}
+            placeholder="Leave empty to use the character names"
+            disabled={busy}
+            aria-label="Run name"
+          />
+        </label>
         {busy ? (
           <button className="danger wide" onClick={onCancel}>
             Cancel
@@ -246,6 +262,7 @@ function Status({ state, now, onShowResults }: { state: SimState; now: number; o
           <button className="secondary wide" onClick={onShowResults}>
             See full results
           </button>
+          <p className="muted small">Saved to History.</p>
         </div>
       );
     }

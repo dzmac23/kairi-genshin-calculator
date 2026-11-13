@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { CancelledError, ConfigError, SimPool, type Progress, type SimResult } from './engine/pool';
-import type { Turn } from './rotation/notation';
+import type { SimSettings } from './config/settings';
+import type { RotationText, Turn } from './rotation/notation';
+import type { Team } from './team/model';
 import { FPS, measureTiming, type RotationTiming } from './rotation/timing';
 
 export type SimState =
@@ -11,8 +13,20 @@ export type SimState =
   | { phase: 'cancelled'; progress?: Progress }
   | { phase: 'error'; message: string; isConfigError: boolean };
 
+/** What a run was made from, saved with it in the History (see history/model.ts). */
+export type RunMeta = {
+  source: 'team' | 'paste';
+  label?: string;
+  team?: Team;
+  rotation?: RotationText;
+  settings?: SimSettings;
+};
+
 /** The most recent successful run, kept for the Results screen while the next one runs. */
 export type FinishedRun = {
+  /** Identifies the run in the History. */
+  id: string;
+  meta: RunMeta;
   result: SimResult;
   seconds: number;
   finishedAt: Date;
@@ -37,7 +51,7 @@ export function useSimulation() {
   const [lastRun, setLastRun] = useState<FinishedRun | undefined>(undefined);
   const lastProgress = useRef<Progress | undefined>(undefined);
 
-  const run = useCallback(async (config: string, notes: string[] = [], timing?: TimingRequest) => {
+  const run = useCallback(async (config: string, notes: string[] = [], timing?: TimingRequest, meta: RunMeta = { source: 'paste' }) => {
     setState({ phase: 'starting' });
     lastProgress.current = undefined;
     let startedAt = 0;
@@ -50,10 +64,11 @@ export function useSimulation() {
       const seconds = (performance.now() - startedAt) / 1000;
       setState({ phase: 'done', result, seconds });
       const finishedAt = new Date();
-      setLastRun({ result, seconds, finishedAt, config, notes, timing: timing ? 'measuring' : undefined });
+      setLastRun({ id: crypto.randomUUID(), meta, result, seconds, finishedAt, config, notes, timing: timing ? 'measuring' : undefined });
       if (timing) {
         const seeds = Array.from({ length: TIMING_REPLAYS }, (_, i) => String(i + 1));
         const update = (value: FinishedRun['timing']) =>
+          // Only the run that was measured is updated, even if another has finished since.
           setLastRun((r) => (r && r.finishedAt === finishedAt ? { ...r, timing: value } : r));
         pool
           .markers(timing.config, seeds)
