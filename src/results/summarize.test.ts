@@ -60,6 +60,40 @@ describe('summarize (placeholder test team)', () => {
   });
 });
 
+describe('summarize: precision, colours, energy, damage over time', () => {
+  it('says how precise the average is (95%: 1.96 × sd / √fights)', () => {
+    expect(view.precision).toBeCloseTo((1.96 * 2067.915) / Math.sqrt(500), 1);
+  });
+
+  it('gives each character its team slot, used for colours', () => {
+    expect(view.characters.map((c) => c.slot)).toEqual([0, 1, 2, 3]);
+    expect(view.sources.find((x) => x.character === 'Furina')!.slot).toBe(2);
+  });
+
+  it('flags time lost that gcsim warned about', () => {
+    expect(view.timeLost.every((r) => r.warned)).toBe(true); // skill_cd and insufficient_energy both warned
+  });
+
+  it('labels energy sources: teammates by name, drops and gear by what they are', () => {
+    const xilonen = view.energy[3];
+    expect(xilonen.character).toBe('Xilonen');
+    expect(xilonen.sources.map((x) => x.label)).toContain('Scroll 2pc');
+    expect(xilonen.sources.map((x) => x.label)).toContain('Random energy drops');
+    expect(xilonen.sources.map((x) => x.label)).toContain('Normal/charged attack hits');
+    const furina = xilonen.sources.find((x) => x.label === 'From Furina')!;
+    expect(furina.fromSlot).toBe(2);
+    expect(xilonen.total).toBeCloseTo(xilonen.sources.reduce((a, x) => a + x.amount, 0));
+  });
+
+  it('turns damage buckets into DPS over the fight that averages to the team DPS', () => {
+    const d = view.damageOverTime!;
+    expect(d.points).toHaveLength(181); // 90 s in half-second buckets
+    expect(d.points[0].time).toBeCloseTo(0.25);
+    const avg = d.points.reduce((a, p) => a + p.dps, 0) / d.points.length;
+    expect(Math.abs(avg - view.teamDps.mean) / view.teamDps.mean).toBeLessThan(0.05);
+  });
+});
+
 describe('names', () => {
   it('turns gcsim keys into display names', () => {
     expect(characterName('kaedeharakazuha')).toBe('Kaedehara Kazuha');

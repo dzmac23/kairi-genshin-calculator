@@ -1,19 +1,33 @@
-import { useMemo, useState } from 'react';
-import { summarize, type GcsimResult, type Stat } from '../results/summarize';
+// The Results screen: a summary first (team DPS, who does the damage, time lost), then detail
+// sections that can be collapsed. Each character keeps its team-slot colour on every chart.
+
+import { useMemo, useState, type ReactNode } from 'react';
+import { Legend, LineChart, SegmentedBar, slotClass, type Part } from '../components/Charts';
 import { isPlaceholderConfig, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
-import type { RotationTiming, Span } from '../rotation/timing';
+import { FAILURES, summarize, type GcsimResult, type ResultsView, type Stat } from '../results/summarize';
+import type { RotationTiming, Span, TurnTiming } from '../rotation/timing';
 import type { FinishedRun } from '../useSimulation';
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
 const pct = (share: number) => `${(share * 100).toFixed(1)}%`;
+const pct0 = (share: number) => `${Math.round(share * 100)}%`;
 const secs = (n: number) => `${n.toFixed(1)} s`;
 const range = (s: Stat, f: (n: number) => string) => `${f(s.min)} – ${f(s.max)}`;
 
 const SOURCES_SHOWN = 10;
 
+const SECTIONS = [
+  { id: 'who', title: 'Who does the damage' },
+  { id: 'time-lost', title: 'Time lost' },
+  { id: 'timing', title: 'Rotation timing' },
+  { id: 'over-time', title: 'Damage over the fight' },
+  { id: 'sources', title: 'Damage by source' },
+  { id: 'energy', title: 'Energy' },
+  { id: 'reactions', title: 'Reactions' },
+];
+
 export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; onGoToRun: () => void }) {
   const view = useMemo(() => (run ? summarize(run.result as GcsimResult) : undefined), [run]);
-  const [showAllSources, setShowAllSources] = useState(false);
 
   if (!run || !view) {
     return (
@@ -25,8 +39,8 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
     );
   }
 
-  const sources = showAllSources ? view.sources : view.sources.slice(0, SOURCES_SHOWN);
-  const maxSource = view.sources[0]?.dps ?? 1;
+  const hasTiming = !!run.timing;
+  const keyToSlot = new Map(view.characters.map((c) => [c.key, c.slot]));
 
   return (
     <>
@@ -36,7 +50,6 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
           <p className="small">{PLACEHOLDER_NOTE}</p>
         </div>
       )}
-
       {run.notes.length > 0 && (
         <section className="card warnings">
           {run.notes.map((n) => (
@@ -47,215 +60,250 @@ export default function ResultsScreen({ run, onGoToRun }: { run?: FinishedRun; o
         </section>
       )}
 
-      <section className="card">
-        <h2>Team DPS</h2>
-        <p className="big">{fmt(view.teamDps.mean)}</p>
-        <dl className="stats">
-          <dt>Standard deviation</dt>
-          <dd>{fmt(view.teamDps.sd)}</dd>
-          <dt>Lowest – highest</dt>
-          <dd>{range(view.teamDps, fmt)}</dd>
-          <dt>Iterations</dt>
-          <dd>{view.iterations}</dd>
-          <dt>Fight length</dt>
-          <dd>{secs(view.duration)}</dd>
-        </dl>
-        <p className="muted small">
-          Finished {run.finishedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} in{' '}
-          {run.seconds.toFixed(1)} s.
-        </p>
-      </section>
+      <Summary view={view} run={run} />
 
-      {view.warnings.length > 0 && (
-        <section className="card warnings">
-          <h2>Warnings from gcsim</h2>
-          {view.warnings.map((w) => (
-            <div className="callout" key={w.kind}>
-              <strong>{w.title}</strong>
-              <p className="small">{w.advice}</p>
-              {w.rows.length > 0 && (
-                <ul className="small">
-                  {w.rows.map((r) => (
-                    <li key={r.character}>
-                      {r.character} waited <strong>{secs(r.seconds.mean)}</strong> per fight on average (up to{' '}
-                      {secs(r.seconds.max)}).
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
-      <section className="card">
-        <h2>Characters</h2>
-        <div className="characters">
-          {view.characters.map((c) => (
-            <div className="character" key={c.key}>
-              <div className="character-head">
-                <span className={`element el-${c.element}`} aria-hidden="true" />
-                <strong>{c.name}</strong>
-                <span className="right">{fmt(c.dps.mean)} DPS</span>
-              </div>
-              <div className="bar" aria-hidden="true">
-                <span className={`el-${c.element}`} style={{ width: pct(Math.max(0, c.share)) }} />
-              </div>
-              <dl className="stats compact">
-                <dt>Share of team DPS</dt>
-                <dd>{pct(c.share)}</dd>
-                <dt>DPS standard deviation</dt>
-                <dd>{fmt(c.dps.sd)}</dd>
-                <dt>Time on field</dt>
-                <dd>
-                  {secs(c.fieldTime.mean)} ({pct(c.fieldShare)})
-                </dd>
-                {c.endingEnergy && (
-                  <>
-                    <dt>Energy left at the end</dt>
-                    <dd>{fmt(c.endingEnergy.mean)}</dd>
-                  </>
-                )}
-              </dl>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <RotationTimingCard timing={run.timing} />
-
-      <section className="card">
-        <h2>Damage by source</h2>
-        <p className="muted small">Every attack, highest first, as DPS and share of the team total.</p>
-        <ol className="sources">
-          {sources.map((s) => (
-            <li key={`${s.character}|${s.source}`}>
-              <div className="source-head">
-                <span>
-                  {s.source}
-                  <span className="muted"> · {s.character}</span>
-                </span>
-                <span className="right">
-                  {fmt(s.dps)} <span className="muted">({pct(s.share)})</span>
-                </span>
-              </div>
-              <div className="bar thin" aria-hidden="true">
-                <span className={`el-${s.element}`} style={{ width: pct(s.dps / maxSource) }} />
-              </div>
-            </li>
-          ))}
-        </ol>
-        {view.sources.length > SOURCES_SHOWN && (
-          <button className="secondary" onClick={() => setShowAllSources(!showAllSources)}>
-            {showAllSources ? 'Show top 10' : `Show all ${view.sources.length}`}
+      <nav className="jump" aria-label="Jump to a section">
+        {SECTIONS.filter((s) => s.id !== 'timing' || hasTiming).map((s) => (
+          <button key={s.id} className="chip" onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' })}>
+            {s.title}
           </button>
-        )}
-      </section>
+        ))}
+      </nav>
 
-      <section className="card">
-        <h2>Reactions</h2>
-        {view.reactionTotals.length === 0 ? (
-          <p className="muted">No reactions in this run.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Reaction</th>
-                <th className="num">Per fight</th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.reactionTotals.map((r) => (
-                <tr key={r.reaction}>
-                  <td>
-                    {r.reaction}
-                    <div className="muted small">
-                      {r.by.map((b) => `${b.character} ${b.perFight.toFixed(1)}`).join(' · ')}
-                    </div>
-                  </td>
-                  <td className="num">{r.perFight.toFixed(1)}</td>
-                </tr>
+      <Section id="who" title="Who does the damage">
+        <WhoDoesTheDamage view={view} />
+      </Section>
+      <Section id="time-lost" title="Time lost">
+        <TimeLost view={view} />
+      </Section>
+      {hasTiming && (
+        <Section id="timing" title="Rotation timing">
+          <RotationTimingSection timing={run.timing!} keyToSlot={keyToSlot} view={view} />
+        </Section>
+      )}
+      <Section id="over-time" title="Damage over the fight">
+        <DamageOverTimeSection view={view} />
+      </Section>
+      <Section id="sources" title="Damage by source">
+        <Sources view={view} />
+      </Section>
+      <Section id="energy" title="Energy">
+        <Energy view={view} />
+      </Section>
+      <Section id="reactions" title="Reactions">
+        <Reactions view={view} />
+      </Section>
+    </>
+  );
+}
+
+/** A collapsible card. Open by default; tap the title to fold it away. */
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section className="card" id={id}>
+      <details open className="section">
+        <summary>
+          <h2>{title}</h2>
+        </summary>
+        {children}
+      </details>
+    </section>
+  );
+}
+
+function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
+  return (
+    <section className="card">
+      <h2>Team DPS</h2>
+      <p className="big hero">{fmt(view.teamDps.mean)}</p>
+      <p className="muted small precision">
+        Accurate to about ±{fmt(view.precision)}: the true average is very likely within that of {fmt(view.teamDps.mean)}.
+      </p>
+      <dl className="stats">
+        <dt>Typical spread between fights</dt>
+        <dd>±{fmt(view.teamDps.sd)}</dd>
+        <dt>Worst – best fight</dt>
+        <dd>{range(view.teamDps, fmt)}</dd>
+        <dt>Simulated fights</dt>
+        <dd>{view.iterations.toLocaleString()}</dd>
+        <dt>Fight length</dt>
+        <dd>{secs(view.duration)}</dd>
+      </dl>
+      <p className="muted small">
+        Finished {run.finishedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} in {run.seconds.toFixed(1)} s.
+      </p>
+    </section>
+  );
+}
+
+function WhoDoesTheDamage({ view }: { view: ResultsView }) {
+  const legend = view.characters.map((c) => ({ label: c.name, slot: c.slot }));
+  const dpsParts: Part[] = view.characters.map((c) => ({
+    label: c.name,
+    slot: c.slot,
+    value: c.dps.mean,
+    inside: pct0(c.share),
+    detail: `${fmt(c.dps.mean)} DPS (${pct(c.share)})`,
+  }));
+  const fieldParts: Part[] = view.characters.map((c) => ({
+    label: c.name,
+    slot: c.slot,
+    value: c.fieldTime.mean,
+    inside: pct0(c.fieldShare),
+    detail: `${secs(c.fieldTime.mean)} on field (${pct(c.fieldShare)})`,
+  }));
+  return (
+    <>
+      <p className="bar-title">Share of team damage</p>
+      <SegmentedBar parts={dpsParts} label="Share of team damage" />
+      <p className="bar-title">Time on field</p>
+      <SegmentedBar parts={fieldParts} label="Time on field" />
+      <Legend items={legend} />
+      <table className="table compact-table">
+        <thead>
+          <tr>
+            <th>Character</th>
+            <th className="num">DPS</th>
+            <th className="num">Share</th>
+            <th className="num">On field</th>
+            <th className="num">Energy left</th>
+          </tr>
+        </thead>
+        <tbody>
+          {view.characters.map((c) => (
+            <tr key={c.key}>
+              <td>
+                <span className={`swatch ${slotClass(c.slot)}`} aria-hidden="true" />
+                {c.name}
+                <div className="muted small">
+                  {c.element.charAt(0).toUpperCase() + c.element.slice(1)} · ±{fmt(c.dps.sd)} spread
+                </div>
+              </td>
+              <td className="num">{fmt(c.dps.mean)}</td>
+              <td className="num">{pct(c.share)}</td>
+              <td className="num">
+                {secs(c.fieldTime.mean)}
+                <div className="muted small">{pct(c.fieldShare)}</div>
+              </td>
+              <td className="num">{c.endingEnergy ? fmt(c.endingEnergy.mean) : '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">
+        Damage share is how much of the team's damage each character deals; time on field is how long they are the active
+        character. A character with a bigger damage share than field time is doing a lot from off-field.
+      </p>
+    </>
+  );
+}
+
+function TimeLost({ view }: { view: ResultsView }) {
+  const warned = view.warnings;
+  const smaller = view.timeLost.filter((r) => !r.warned);
+  if (view.timeLost.length === 0 && warned.length === 0) {
+    return <p>No time lost: nobody had to wait for a cooldown, energy or stamina.</p>;
+  }
+  return (
+    <>
+      <p className="muted small">
+        Time a character stood idle because the rotation asked for something that wasn't ready yet. gcsim warns when it is
+        1 second or more per fight.
+      </p>
+      {warned.map((w) => (
+        <div className="callout warn-callout" key={w.kind}>
+          <strong>{w.title}</strong>
+          <p className="small">{w.advice}</p>
+          {w.rows.length > 0 && (
+            <ul className="small">
+              {w.rows.map((r) => (
+                <li key={r.character}>
+                  {r.character} waited <strong>{secs(r.seconds.mean)}</strong> per fight on average (worst fight {secs(r.seconds.max)}).
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Time lost to failed actions</h2>
-        <p className="muted small">
-          Time a character stood idle because the rotation asked for something that wasn't ready yet. gcsim shows a
-          warning above when it is 1 second or more.
-        </p>
-        {view.timeLost.length === 0 ? (
-          <p>No time lost. The rotation runs without waiting.</p>
-        ) : (
+            </ul>
+          )}
+        </div>
+      ))}
+      {smaller.length > 0 && (
+        <>
+          <p className="bar-title">{warned.length ? 'Smaller delays' : 'Small delays (under gcsim’s warning level)'}</p>
           <table className="table">
             <thead>
               <tr>
                 <th>Character</th>
-                <th>Reason</th>
+                <th>Waiting for</th>
                 <th className="num">Average</th>
                 <th className="num">Worst</th>
               </tr>
             </thead>
             <tbody>
-              {view.timeLost.map((r) => (
+              {smaller.map((r) => (
                 <tr key={`${r.character}|${r.kind}`}>
                   <td>{r.character}</td>
-                  <td>{r.label}</td>
+                  <td>{FAILURES[r.kind].label.replace(/^Waiting for /, '')}</td>
                   <td className="num">{secs(r.seconds.mean)}</td>
                   <td className="num">{secs(r.seconds.max)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </section>
+        </>
+      )}
     </>
   );
 }
 
-const sec = (s: Span) => `${s.mean.toFixed(1)} s`;
-const spread = (s: Span) => (s.max - s.min >= 0.05 ? `${s.min.toFixed(1)}–${s.max.toFixed(1)} s` : '');
+const span = (s: Span) => `${s.mean.toFixed(1)} s`;
+const spread = (s: Span) => `${s.min.toFixed(1)}–${s.max.toFixed(1)} s`;
+/**
+ * A turn "varies a lot" when its slowest time is well above its fastest (at least 1.5 s and 30% of
+ * its average): usually waiting, or a ? / @ move that only happens in some loops.
+ */
+const variesALot = (s: Span) => s.max - s.min >= Math.max(1.5, s.mean * 0.3);
 
-function RotationTimingCard({ timing }: { timing: FinishedRun['timing'] }) {
-  if (!timing) return null; // pasted configs have no turn markers
-  if (timing === 'measuring') {
-    return (
-      <section className="card">
-        <h2>Rotation timing</h2>
-        <p className="muted">Measuring rotation timing…</p>
-      </section>
-    );
-  }
-  if (timing === 'failed') {
-    return (
-      <section className="card">
-        <h2>Rotation timing</h2>
-        <p className="muted">Rotation timing couldn't be measured for this run.</p>
-      </section>
-    );
-  }
-  return <RotationTimingTable timing={timing} />;
+function RotationTimingSection({
+  timing,
+  keyToSlot,
+  view,
+}: {
+  timing: FinishedRun['timing'];
+  keyToSlot: Map<string, number>;
+  view: ResultsView;
+}) {
+  if (timing === 'measuring') return <p className="muted">Measuring rotation timing…</p>;
+  if (timing === 'failed' || !timing) return <p className="muted">Rotation timing couldn't be measured for this run.</p>;
+  return <RotationTimingTables timing={timing} keyToSlot={keyToSlot} view={view} />;
 }
 
-function RotationTimingTable({ timing }: { timing: RotationTiming }) {
+function RotationTimingTables({ timing, keyToSlot, view }: { timing: RotationTiming; keyToSlot: Map<string, number>; view: ResultsView }) {
+  const opener = timing.turns.filter((t) => t.section === 'opener');
+  const loop = timing.turns.filter((t) => t.section === 'loop');
+  const loopTotal = timing.loop?.mean ?? 0;
+  const name = (t: TurnTiming) => (t.text.startsWith('!') ? 'gcsim line' : t.text.split(/\s+/)[0]);
+  const parts: Part[] = loop
+    .filter((t) => t.time && t.time.mean > 0)
+    .map((t) => ({
+      label: `Turn ${t.index}: ${t.text}`,
+      slot: t.key ? keyToSlot.get(t.key) : undefined,
+      value: t.time!.mean,
+      inside: `${name(t)} ${t.time!.mean.toFixed(1)}s`,
+      detail: `${span(t.time!)} (${pct0(t.time!.mean / (loopTotal || 1))} of the loop)`,
+    }));
   return (
-    <section className="card">
-      <h2>Rotation timing</h2>
+    <>
       <dl className="stats">
         {timing.opener && (
           <>
-            <dt>Opener</dt>
-            <dd>{sec(timing.opener)}</dd>
+            <dt>Opener length</dt>
+            <dd>{span(timing.opener)}</dd>
           </>
         )}
-        <dt>One loop</dt>
+        <dt>Loop length (one cycle)</dt>
         <dd>
           {timing.loop ? (
             <>
-              {sec(timing.loop)} {spread(timing.loop) && <span className="muted small">({spread(timing.loop)})</span>}
+              {span(timing.loop)} <span className="muted small">({spread(timing.loop)})</span>
             </>
           ) : (
             'longer than the fight'
@@ -263,43 +311,231 @@ function RotationTimingTable({ timing }: { timing: RotationTiming }) {
         </dd>
         {timing.loopsPerFight !== undefined && (
           <>
-            <dt>Loops per fight</dt>
+            <dt>Loops in the fight</dt>
             <dd>{timing.loopsPerFight.toFixed(1)}</dd>
           </>
         )}
       </dl>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Turn</th>
-            <th className="num">Time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {timing.turns.map((t) => (
-            <tr key={`${t.section}${t.index}`}>
-              <td>
-                <span className="muted small">{t.section === 'opener' ? `Opener ${t.index}` : `Loop ${t.index}`} · </span>
-                <code className="turn-text">{t.text}</code>
-                {t.skipped > 0 && (
-                  <div className="muted small">
-                    Skipped in {t.skipped} of {t.measured} {t.section === 'opener' ? 'fights' : 'loops'}
-                  </div>
-                )}
-              </td>
-              <td className="num">
-                {t.time ? sec(t.time) : '–'}
-                {t.time && spread(t.time) && <div className="muted small">{spread(t.time)}</div>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="muted small">
-        Averaged over {timing.replays} replayed fights. A turn runs from when gcsim starts it to when the next turn
-        starts, so swaps and any waiting count toward the turn, and the Loop turns add up to one loop. Only complete
-        loops are counted.
-      </p>
-    </section>
+
+      {parts.length > 0 && (
+        <>
+          <p className="bar-title">One loop, turn by turn</p>
+          <SegmentedBar parts={parts} label="One loop, turn by turn" />
+          <Legend items={view.characters.map((c) => ({ label: c.name, slot: c.slot }))} />
+        </>
+      )}
+
+      {opener.length > 0 && <TurnTable title="Opener" turns={opener} total={timing.opener} keyToSlot={keyToSlot} />}
+      <TurnTable title="Loop" turns={loop} total={timing.loop} keyToSlot={keyToSlot} shareOf={loopTotal} />
+
+      <details className="how-to-read">
+        <summary>How to read this</summary>
+        <p className="small muted">
+          The Opener runs once; the Loop repeats until the fight ends. A turn's time runs from when gcsim starts it until it
+          starts the next turn, so the swap in and any waiting (for a cooldown or energy) count toward that turn, and the
+          Loop's turns add up to one loop. A very short turn means the next character could swap in early, not that the
+          animation is that short. Times are averaged over {timing.replays} replayed fights; only complete loops are
+          counted. A turn that “varies a lot” usually includes waiting: see Time lost above for who waited and why.
+        </p>
+      </details>
+    </>
   );
 }
+
+function TurnTable({
+  title,
+  turns,
+  total,
+  keyToSlot,
+  shareOf,
+}: {
+  title: string;
+  turns: TurnTiming[];
+  total?: Span;
+  keyToSlot: Map<string, number>;
+  shareOf?: number;
+}) {
+  return (
+    <>
+      <p className="bar-title">{title}</p>
+      <table className="table turn-table">
+        <tbody>
+          {turns.map((t) => {
+            const slot = t.key ? keyToSlot.get(t.key) : undefined;
+            return (
+              <tr key={`${t.section}${t.index}`}>
+                <td>
+                  <span className={`swatch ${slotClass(slot)}`} aria-hidden="true" />
+                  <code className="turn-text">{t.text}</code>
+                  {shareOf !== undefined && t.time && (
+                    <div className="bar thin" aria-hidden="true">
+                      <span className={slotClass(slot)} style={{ width: pct(Math.min(1, t.time.mean / (shareOf || 1))) }} />
+                    </div>
+                  )}
+                  {t.skipped > 0 && (
+                    <div className="muted small">
+                      Skipped in {t.skipped} of {t.measured} {t.section === 'opener' ? 'fights' : 'loops'}
+                    </div>
+                  )}
+                  {t.time && variesALot(t.time) && (
+                    <div className="warn small">
+                      Varies a lot ({spread(t.time)}): likely waiting, or a ? / @ move that only happens in some loops.
+                    </div>
+                  )}
+                </td>
+                <td className="num">
+                  {t.time ? span(t.time) : '–'}
+                  {t.time && t.time.max - t.time.min >= 0.05 && <div className="muted small">{spread(t.time)}</div>}
+                </td>
+              </tr>
+            );
+          })}
+          {total && (
+            <tr className="total-row">
+              <td>Total {title.toLowerCase()}</td>
+              <td className="num">{span(total)}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function DamageOverTimeSection({ view }: { view: ResultsView }) {
+  const d = view.damageOverTime;
+  const [showTable, setShowTable] = useState(false);
+  if (!d) return <p className="muted">This result doesn't include damage over time.</p>;
+  const peak = d.points.reduce((a, p) => (p.dps > a.dps ? p : a), d.points[0]);
+  const low = d.points.reduce((a, p) => (p.dps < a.dps ? p : a), d.points[0]);
+  const step = Math.max(1, Math.round(5 / (d.points[1]?.time - d.points[0]?.time || 0.5)));
+  return (
+    <>
+      <p className="muted small">
+        Team damage per second through the fight, smoothed over {d.windowSeconds} seconds and averaged over all simulated
+        fights. Peaks are burst windows; dips are downtime.
+      </p>
+      <LineChart points={d.points} label={`Team DPS over the fight. Peak ${fmt(peak.dps)} at ${peak.time.toFixed(0)} s.`} format={(v) => `${fmt(v)} DPS`} />
+      <p className="small">
+        Peak <strong>{fmt(peak.dps)}</strong> DPS around {peak.time.toFixed(0)} s · lowest {fmt(low.dps)} around {low.time.toFixed(0)} s ·
+        average {fmt(view.teamDps.mean)}.
+      </p>
+      <button className="secondary" onClick={() => setShowTable(!showTable)}>
+        {showTable ? 'Hide table' : 'Show as table'}
+      </button>
+      {showTable && (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th className="num">DPS ({d.windowSeconds} s average)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.points.filter((_, i) => i % step === 0).map((p) => (
+              <tr key={p.time}>
+                <td>{p.time.toFixed(0)} s</td>
+                <td className="num">{fmt(p.dps)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
+function Sources({ view }: { view: ResultsView }) {
+  const [showAll, setShowAll] = useState(false);
+  const sources = showAll ? view.sources : view.sources.slice(0, SOURCES_SHOWN);
+  const maxSource = view.sources[0]?.dps ?? 1;
+  return (
+    <>
+      <p className="muted small">Every attack, highest first, as DPS and share of the team total.</p>
+      <Legend items={view.characters.map((c) => ({ label: c.name, slot: c.slot }))} />
+      <ol className="sources">
+        {sources.map((s) => (
+          <li key={`${s.character}|${s.source}`}>
+            <div className="source-head">
+              <span>
+                {s.source}
+                <span className="muted"> · {s.character}</span>
+              </span>
+              <span className="right">
+                {fmt(s.dps)} <span className="muted">({pct(s.share)})</span>
+              </span>
+            </div>
+            <div className="bar thin" aria-hidden="true">
+              <span className={slotClass(s.slot)} style={{ width: pct(s.dps / maxSource) }} />
+            </div>
+          </li>
+        ))}
+      </ol>
+      {view.sources.length > SOURCES_SHOWN && (
+        <button className="secondary" onClick={() => setShowAll(!showAll)}>
+          {showAll ? 'Show top 10' : `Show all ${view.sources.length}`}
+        </button>
+      )}
+    </>
+  );
+}
+
+function Energy({ view }: { view: ResultsView }) {
+  return (
+    <>
+      <p className="muted small">
+        Energy each character received over the whole fight, and where it came from (a teammate's particles or flat
+        energy, random drops, gear and so on). Useful when gcsim says someone waits
+        for burst energy: it shows whether they need more Energy Recharge or more particles.
+      </p>
+      {view.energy.map((e) => {
+        const c = view.characters[e.slot];
+        return (
+          <div className="energy-row" key={e.character}>
+            <div className="energy-head">
+              <span>
+                <span className={`swatch ${slotClass(e.slot)}`} aria-hidden="true" />
+                <strong>{e.character}</strong>
+              </span>
+              <span className="right">
+                {fmt(e.total)} received{c.endingEnergy ? <span className="muted"> · {fmt(c.endingEnergy.mean)} left at the end</span> : null}
+              </span>
+            </div>
+            <SegmentedBar
+              tall={false}
+              label={`${e.character}'s energy sources`}
+              parts={e.sources.map((s) => ({ label: s.label, value: s.amount, slot: s.fromSlot, detail: `${s.amount.toFixed(1)} energy` }))}
+            />
+            <p className="small muted">{e.sources.map((s) => `${s.label} ${s.amount.toFixed(1)}`).join(' · ')}</p>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function Reactions({ view }: { view: ResultsView }) {
+  if (view.reactionTotals.length === 0) return <p className="muted">No reactions in this run.</p>;
+  return (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Reaction</th>
+          <th className="num">Per fight</th>
+        </tr>
+      </thead>
+      <tbody>
+        {view.reactionTotals.map((r) => (
+          <tr key={r.reaction}>
+            <td>
+              {r.reaction}
+              <div className="muted small">{r.by.map((b) => `${b.character} ${b.perFight.toFixed(1)}`).join(' · ')}</div>
+            </td>
+            <td className="num">{r.perFight.toFixed(1)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+

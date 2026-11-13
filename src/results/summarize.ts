@@ -9,6 +9,7 @@ import gcsimKeys from '../../data/gcsim_keys.json';
 export type Stat = { mean: number; min: number; max: number; sd: number };
 
 type StatsBySource = { sources?: Record<string, Stat> };
+type Buckets = { bucket_size?: number; buckets?: Stat[] };
 
 /** The parts of gcsim's result JSON this file reads. Everything is optional to be safe. */
 export type GcsimResult = {
@@ -25,6 +26,8 @@ export type GcsimResult = {
     source_reactions?: StatsBySource[];
     failed_actions?: Partial<Record<FailureKind, Stat>>[];
     warnings?: Partial<Record<FailureKind | 'target_overlap', boolean>>;
+    total_source_energy?: StatsBySource[];
+    damage_buckets?: Buckets;
   };
 };
 
@@ -72,6 +75,8 @@ export const FAILURES: Record<FailureKind, { label: string; warning: string; adv
 const FAILURE_ORDER = Object.keys(FAILURES) as FailureKind[];
 
 export type CharacterRow = {
+  /** Position in the team (0 to 3): decides the character's colour everywhere. */
+  slot: number;
   key: string;
   name: string;
   element: string;
@@ -84,11 +89,29 @@ export type CharacterRow = {
   endingEnergy?: Stat;
 };
 
-export type SourceRow = { character: string; element: string; source: string; dps: number; share: number };
+export type SourceRow = { slot: number; character: string; element: string; source: string; dps: number; share: number };
 export type ReactionRow = { reaction: string; character: string; perFight: number };
 /** One reaction across the whole team, with who triggered it (highest first). */
 export type ReactionTotal = { reaction: string; perFight: number; by: { character: string; perFight: number }[] };
-export type TimeLostRow = { kind: FailureKind; label: string; character: string; seconds: Stat };
+export type TimeLostRow = {
+  kind: FailureKind;
+  label: string;
+  character: string;
+  seconds: Stat;
+  /** gcsim raised a warning for this kind of failure (1 s or more per fight across the team). */
+  warned: boolean;
+};
+
+/** Energy one character received, by where it came from (largest first). */
+export type EnergyRow = {
+  slot: number;
+  character: string;
+  total: number;
+  sources: { label: string; amount: number; /** slot of the character it came from (their particles or flat energy), if any */ fromSlot?: number }[];
+};
+
+/** Team damage per second over the fight, averaged over a sliding window. */
+export type DamageOverTime = { windowSeconds: number; points: { time: number; dps: number }[] };
 export type WarningRow = {
   kind: FailureKind | 'target_overlap' | 'incomplete';
   title: string;
@@ -98,6 +121,8 @@ export type WarningRow = {
 
 export type ResultsView = {
   teamDps: Stat;
+  /** How precise the average is: about 95% of the time the true average is within ± this. */
+  precision: number;
   iterations: number;
   duration: number;
   characters: CharacterRow[];
@@ -106,7 +131,38 @@ export type ResultsView = {
   reactionTotals: ReactionTotal[];
   timeLost: TimeLostRow[];
   warnings: WarningRow[];
+  energy: EnergyRow[];
+  damageOverTime?: DamageOverTime;
 };
+
+const ENERGY_SOURCE_NAMES: Record<string, string> = {
+  drop: 'Random energy drops',
+  'na-ca-on-hit': 'Normal/charged attack hits',
+};
+
+/** "scroll-2pc" -> "Scroll 2pc" for gear and passive sources gcsim names by key. */
+function energySourceLabel(key: string): string {
+  if (ENERGY_SOURCE_NAMES[key]) return ENERGY_SOURCE_NAMES[key];
+  const words = key.replace(/[-_]/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Smooths gcsim's per-bucket team damage into DPS over a sliding window. */
+export function damageOverTime(buckets: Buckets | undefined, windowSeconds = 5): DamageOverTime | undefined {
+  const size = buckets?.bucket_size;
+  const values = buckets?.buckets?.map((b) => b.mean);
+  if (!size || !values?.length) return undefined;
+  const bucketSeconds = size / 60;
+  const half = Math.max(1, Math.round(windowSeconds / bucketSeconds / 2));
+  const points = values.map((_, i) => {
+    const from = Math.max(0, i - half);
+    const to = Math.min(values.length, i + half);
+    let sum = 0;
+    for (let j = from; j < to; j++) sum += values[j];
+    return { time: (i + 0.5) * bucketSeconds, dps: sum / ((to - from) * bucketSeconds) };
+  });
+  return { windowSeconds, points };
+}
 
 const charNames = new Map(Object.entries(gcsimKeys.char).map(([name, key]) => [key, name]));
 
@@ -155,6 +211,7 @@ export function summarize(result: GcsimResult): ResultsView {
     const dps = s.character_dps?.[i] ?? zero;
     const fieldTime = s.field_time?.[i] ?? zero;
     return {
+      slot: i,
       key: c.name,
       name: names[i],
       element: c.element ?? 'physical',
@@ -169,6 +226,7 @@ export function summarize(result: GcsimResult): ResultsView {
   const sources: SourceRow[] = details
     .flatMap((c, i) =>
       Object.entries(s.source_dps?.[i]?.sources ?? {}).map(([source, stat]) => ({
+        slot: i,
         character: names[i],
         element: c.element ?? 'physical',
         source: sourceName(source),
@@ -206,6 +264,7 @@ export function summarize(result: GcsimResult): ResultsView {
         label: FAILURES[kind].label,
         character: names[i],
         seconds: s.failed_actions?.[i]?.[kind] ?? zero,
+        warned: !!s.warnings?.[kind],
       })),
     )
     .filter((row) => row.seconds.mean >= 0.005)
@@ -239,9 +298,24 @@ export function summarize(result: GcsimResult): ResultsView {
     });
   }
 
+  const slotOf = new Map(details.map((c, i) => [c.name, i]));
+  const energy: EnergyRow[] = details.map((_, i) => {
+    const sources = Object.entries(s.total_source_energy?.[i]?.sources ?? {})
+      .map(([key, stat]) => ({
+        label: slotOf.has(key) ? `From ${names[slotOf.get(key)!]}` : energySourceLabel(key),
+        amount: stat.mean,
+        fromSlot: slotOf.get(key),
+      }))
+      .filter((x) => x.amount > 0.05)
+      .sort((a, b) => b.amount - a.amount);
+    return { slot: i, character: names[i], total: sources.reduce((a, x) => a + x.amount, 0), sources };
+  });
+
+  const iterations = s.iterations ?? 0;
   return {
     teamDps: s.dps,
-    iterations: s.iterations ?? 0,
+    precision: iterations > 1 ? (1.96 * s.dps.sd) / Math.sqrt(iterations) : 0,
+    iterations,
     duration,
     characters,
     sources,
@@ -249,5 +323,7 @@ export function summarize(result: GcsimResult): ResultsView {
     reactionTotals,
     timeLost,
     warnings,
+    energy,
+    damageOverTime: damageOverTime(s.damage_buckets),
   };
 }
