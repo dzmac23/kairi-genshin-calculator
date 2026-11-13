@@ -103,7 +103,13 @@ export default function App() {
       cancelled = true;
     };
   }, [simulation.lastRun]);
-  const viewed = viewedRunId ? history.runs.find((r) => r.id === viewedRunId) : undefined;
+  // Results shows the run opened from History, else the latest run of this session, else (after
+  // reopening the app) the most recent saved run.
+  const viewed = viewedRunId
+    ? history.runs.find((r) => r.id === viewedRunId)
+    : simulation.lastRun
+      ? undefined
+      : history.runs[0];
   const shownRun = viewed ? recordToRun(viewed) : simulation.lastRun;
   const shownRecord = shownRun ? history.runs.find((r) => r.id === shownRun.id) : undefined;
 

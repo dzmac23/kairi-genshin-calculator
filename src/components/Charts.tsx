@@ -5,7 +5,7 @@
 // a series colour, every part has a tooltip and an accessible name, and values are also printed
 // as text or in a table, so nothing depends on colour or hover alone.
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export type Part = {
   /** Shown in the legend and the tooltip. */
@@ -76,15 +76,25 @@ export function LineChart({
   xLabel?: string;
 }) {
   const ref = useRef<SVGSVGElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const W = 640;
-  const H = 220;
+  // Drawn at the real width it is shown at, so axis text stays a readable size on phones.
+  const [W, setW] = useState(640);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => setW(Math.max(260, Math.round(entry.contentRect.width))));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const H = Math.round(Math.min(260, Math.max(180, W * 0.45)));
   const pad = { l: 52, r: 12, t: 12, b: 28 };
   const maxT = points[points.length - 1]?.time ?? 1;
   const maxV = Math.max(...points.map((p) => p.dps), 1);
   const yTicks = useMemo(() => niceTicks(maxV, 4), [maxV]);
   const yMax = yTicks[yTicks.length - 1];
-  const xStep = maxT > 120 ? 30 : 15;
+  // Fewer time labels on narrow screens so they don't crowd.
+  const xStep = maxT > 120 || W < 420 ? 30 : 15;
   const x = (t: number) => pad.l + (t / maxT) * (W - pad.l - pad.r);
   const y = (v: number) => H - pad.b - (v / yMax) * (H - pad.t - pad.b);
   const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.dps).toFixed(1)}`).join('');
@@ -100,7 +110,7 @@ export function LineChart({
   const h = hover === null ? null : points[hover];
 
   return (
-    <div className="linechart">
+    <div className="linechart" ref={box}>
       <svg
         ref={ref}
         viewBox={`0 0 ${W} ${H}`}

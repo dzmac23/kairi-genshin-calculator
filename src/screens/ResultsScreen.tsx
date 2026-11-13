@@ -77,7 +77,16 @@ export default function ResultsScreen({ run, name, label, onRename, olderRun, on
 
       <nav className="jump" aria-label="Jump to a section">
         {SECTIONS.filter((s) => s.id !== 'timing' || hasTiming).map((s) => (
-          <button key={s.id} className="chip" onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' })}>
+          <button
+            key={s.id}
+            className="chip"
+            onClick={() => {
+              const section = document.getElementById(s.id);
+              const details = section?.querySelector('details');
+              if (details && !details.open) details.open = true; // unfold it first
+              section?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          >
             {s.title}
           </button>
         ))}
@@ -177,17 +186,56 @@ function RunTitle({
   );
 }
 
-/** A collapsible card. Open by default; tap the title to fold it away. */
+/** On phones only these sections start open; the rest start folded to keep the page short. */
+const OPEN_ON_PHONE = new Set(['who', 'time-lost']);
+const openKey = (id: string) => `results-open:${id}`;
+
+/** Whether a section starts open: as you last left it on this device, else the phone/laptop default. */
+function initiallyOpen(id: string): boolean {
+  try {
+    const saved = localStorage.getItem(openKey(id));
+    if (saved !== null) return saved === '1';
+  } catch {
+    // Storage unavailable (e.g. private browsing): use the default.
+  }
+  const narrow = typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches;
+  return !narrow || OPEN_ON_PHONE.has(id);
+}
+
+/** A collapsible card. Tap the title to fold or unfold it; the choice is remembered on this device. */
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(() => initiallyOpen(id));
   return (
     <section className="card" id={id}>
-      <details open className="section">
+      <details
+        open={open}
+        className="section"
+        onToggle={(e) => {
+          const now = (e.currentTarget as HTMLDetailsElement).open;
+          setOpen(now);
+          try {
+            localStorage.setItem(openKey(id), now ? '1' : '0');
+          } catch {
+            // Not remembered; that's fine.
+          }
+        }}
+      >
         <summary>
           <h2>{title}</h2>
         </summary>
-        {children}
+        {open && children}
       </details>
     </section>
+  );
+}
+
+/** A small "What is this?" toggle holding an explanation, so it doesn't take up space until wanted. */
+function Info({ children }: { children: ReactNode }) {
+  return (
+    <details className="info">
+      <summary>ⓘ What is this?</summary>
+      <p className="small muted">{children}</p>
+    </details>
   );
 }
 
@@ -196,9 +244,13 @@ function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
     <section className="card">
       <h2>Team DPS</h2>
       <p className="big hero">{fmt(view.teamDps.mean)}</p>
-      <p className="muted small precision">
-        Accurate to about ±{fmt(view.precision)}: the true average is very likely within that of {fmt(view.teamDps.mean)}.
-      </p>
+      <p className="precision">Accurate to about ±{fmt(view.precision)}</p>
+      <Info>
+        Every simulated fight is a little different (crits, energy drops), so the team DPS is an average. With{' '}
+        {view.iterations.toLocaleString()} fights, the true average is very likely within ±{fmt(view.precision)} of{' '}
+        {fmt(view.teamDps.mean)}. Differences between two runs smaller than that may just be luck; more fights make it
+        more precise.
+      </Info>
       <dl className="stats">
         <dt>Typical spread between fights</dt>
         <dd>±{fmt(view.teamDps.sd)}</dd>
@@ -239,7 +291,24 @@ function WhoDoesTheDamage({ view }: { view: ResultsView }) {
       <p className="bar-title">Time on field</p>
       <SegmentedBar parts={fieldParts} label="Time on field" />
       <Legend items={legend} />
-      <table className="table compact-table">
+      <ul className="char-list only-narrow">
+        {view.characters.map((c) => (
+          <li key={c.key}>
+            <div className="char-line">
+              <span>
+                <span className={`swatch ${slotClass(c.slot)}`} aria-hidden="true" />
+                <strong>{c.name}</strong>
+              </span>
+              <span className="right">{fmt(c.dps.mean)} DPS</span>
+            </div>
+            <div className="muted small">
+              {pct0(c.share)} of damage · {pct0(c.fieldShare)} on field ({secs(c.fieldTime.mean)})
+              {c.endingEnergy ? ` · ${fmt(c.endingEnergy.mean)} energy left` : ''}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <table className="table compact-table only-wide">
         <thead>
           <tr>
             <th>Character</th>
@@ -270,10 +339,11 @@ function WhoDoesTheDamage({ view }: { view: ResultsView }) {
           ))}
         </tbody>
       </table>
-      <p className="muted small">
+      <Info>
         Damage share is how much of the team's damage each character deals; time on field is how long they are the active
-        character. A character with a bigger damage share than field time is doing a lot from off-field.
-      </p>
+        character. A character with a bigger damage share than field time is doing a lot from off-field. "Energy left" is
+        their energy when the fight ends.
+      </Info>
     </>
   );
 }
@@ -286,10 +356,10 @@ function TimeLost({ view }: { view: ResultsView }) {
   }
   return (
     <>
-      <p className="muted small">
+      <Info>
         Time a character stood idle because the rotation asked for something that wasn't ready yet. gcsim warns when it is
-        1 second or more per fight.
-      </p>
+        1 second or more per fight; smaller delays are listed below the warnings.
+      </Info>
       {warned.map((w) => (
         <div className="callout warn-callout" key={w.kind}>
           <strong>{w.title}</strong>
@@ -415,7 +485,8 @@ function RotationTimingTables({ timing, keyToSlot, view }: { timing: RotationTim
           starts the next turn, so the swap in and any waiting (for a cooldown or energy) count toward that turn, and the
           Loop's turns add up to one loop. A very short turn means the next character could swap in early, not that the
           animation is that short. Times are averaged over {timing.replays} replayed fights; only complete loops are
-          counted. A turn that “varies a lot” usually includes waiting: see Time lost above for who waited and why.
+          counted. A turn tagged “⚠ varies” has a slowest time well above its fastest (at least 1.5 s and 30%): usually
+          waiting, which Time lost above explains, or a ? / @ move that only happens in some loops.
         </p>
       </details>
     </>
@@ -457,11 +528,7 @@ function TurnTable({
                       Skipped in {t.skipped} of {t.measured} {t.section === 'opener' ? 'fights' : 'loops'}
                     </div>
                   )}
-                  {t.time && variesALot(t.time) && (
-                    <div className="warn small">
-                      Varies a lot ({spread(t.time)}): likely waiting, or a ? / @ move that only happens in some loops.
-                    </div>
-                  )}
+                  {t.time && variesALot(t.time) && <span className="tag warn-tag">⚠ varies {spread(t.time)}</span>}
                 </td>
                 <td className="num">
                   {t.time ? span(t.time) : '–'}
@@ -491,10 +558,10 @@ function DamageOverTimeSection({ view }: { view: ResultsView }) {
   const step = Math.max(1, Math.round(5 / (d.points[1]?.time - d.points[0]?.time || 0.5)));
   return (
     <>
-      <p className="muted small">
+      <Info>
         Team damage per second through the fight, smoothed over {d.windowSeconds} seconds and averaged over all simulated
-        fights. Peaks are burst windows; dips are downtime.
-      </p>
+        fights. Peaks are burst windows; dips are downtime. Tap or hover the chart for exact values.
+      </Info>
       <LineChart points={d.points} label={`Team DPS over the fight. Peak ${fmt(peak.dps)} at ${peak.time.toFixed(0)} s.`} format={(v) => `${fmt(v)} DPS`} />
       <p className="small">
         Peak <strong>{fmt(peak.dps)}</strong> DPS around {peak.time.toFixed(0)} s · lowest {fmt(low.dps)} around {low.time.toFixed(0)} s ·
@@ -531,7 +598,7 @@ function Sources({ view }: { view: ResultsView }) {
   const maxSource = view.sources[0]?.dps ?? 1;
   return (
     <>
-      <p className="muted small">Every attack, highest first, as DPS and share of the team total.</p>
+      <Info>Every attack, highest first, as DPS and its share of the team total, coloured by character.</Info>
       <Legend items={view.characters.map((c) => ({ label: c.name, slot: c.slot }))} />
       <ol className="sources">
         {sources.map((s) => (
@@ -560,37 +627,59 @@ function Sources({ view }: { view: ResultsView }) {
   );
 }
 
+const ENERGY_SHOWN = 4;
+
 function Energy({ view }: { view: ResultsView }) {
   return (
     <>
-      <p className="muted small">
-        Energy each character received over the whole fight, and where it came from (a teammate's particles or flat
-        energy, random drops, gear and so on). Useful when gcsim says someone waits
-        for burst energy: it shows whether they need more Energy Recharge or more particles.
-      </p>
-      {view.energy.map((e) => {
-        const c = view.characters[e.slot];
-        return (
-          <div className="energy-row" key={e.character}>
-            <div className="energy-head">
-              <span>
-                <span className={`swatch ${slotClass(e.slot)}`} aria-hidden="true" />
-                <strong>{e.character}</strong>
-              </span>
-              <span className="right">
-                {fmt(e.total)} received{c.endingEnergy ? <span className="muted"> · {fmt(c.endingEnergy.mean)} left at the end</span> : null}
-              </span>
-            </div>
-            <SegmentedBar
-              tall={false}
-              label={`${e.character}'s energy sources`}
-              parts={e.sources.map((s) => ({ label: s.label, value: s.amount, slot: s.fromSlot, detail: `${s.amount.toFixed(1)} energy` }))}
-            />
-            <p className="small muted">{e.sources.map((s) => `${s.label} ${s.amount.toFixed(1)}`).join(' · ')}</p>
-          </div>
-        );
-      })}
+      <Info>
+        Energy each character received over the whole fight, and where it came from: a teammate's particles or flat
+        energy, random drops, normal/charged attack hits, gear and so on. Useful when gcsim says someone waits for burst
+        energy: it shows whether they need more Energy Recharge or more particles.
+      </Info>
+      {view.energy.map((e) => (
+        <EnergyCard key={e.character} energy={e} left={view.characters[e.slot].endingEnergy?.mean} />
+      ))}
     </>
+  );
+}
+
+function EnergyCard({ energy: e, left }: { energy: ResultsView['energy'][number]; left?: number }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? e.sources : e.sources.slice(0, ENERGY_SHOWN);
+  return (
+    <div className="energy-row">
+      <div className="energy-head">
+        <span>
+          <span className={`swatch ${slotClass(e.slot)}`} aria-hidden="true" />
+          <strong>{e.character}</strong>
+        </span>
+        <span className="right">
+          {fmt(e.total)} received{left !== undefined ? <span className="muted"> · {fmt(left)} left</span> : null}
+        </span>
+      </div>
+      <SegmentedBar
+        tall={false}
+        label={`${e.character}'s energy sources`}
+        parts={e.sources.map((s) => ({ label: s.label, value: s.amount, slot: s.fromSlot, detail: `${s.amount.toFixed(1)} energy` }))}
+      />
+      <ul className="energy-sources">
+        {shown.map((s) => (
+          <li key={s.label}>
+            <span>
+              <span className={`swatch ${slotClass(s.fromSlot)}`} aria-hidden="true" />
+              {s.label}
+            </span>
+            <span className="right">{s.amount.toFixed(1)}</span>
+          </li>
+        ))}
+      </ul>
+      {e.sources.length > ENERGY_SHOWN && (
+        <button className="link small" onClick={() => setAll(!all)}>
+          {all ? 'Show fewer' : `+${e.sources.length - ENERGY_SHOWN} more`}
+        </button>
+      )}
+    </div>
   );
 }
 
