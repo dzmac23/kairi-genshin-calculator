@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
 import { useGameData, type GameData, type LevelKey } from '../data/gameData';
@@ -14,11 +14,13 @@ type Props = {
   onClear: () => void;
   /** Clearing would lose unsaved work, so ask first. */
   clearNeedsConfirm: boolean;
+  /** Saved-team controls shown at the top of the Team section. */
+  saveBar?: ReactNode;
 };
 
 const TALENT_NAMES = ['Normal Attack', 'Elemental Skill', 'Elemental Burst'];
 
-export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm }: Props) {
+export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm, saveBar }: Props) {
   const data = useGameData();
   const [active, setActive] = useState(0);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -58,6 +60,7 @@ export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm 
             onNo={() => setConfirmClear(false)}
           />
         )}
+        {saveBar}
         <p className="muted small">
           Four slots. Pick a slot, then fill in the character, weapon, artifact sets and artifact stats. Everything is
           saved on this device as you go.

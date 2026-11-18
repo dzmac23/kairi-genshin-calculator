@@ -1,11 +1,13 @@
-// Saving on the Setup screen: the loaded saved team, its rotations (one marked as main), and the
-// list of all saved teams for renaming, exporting and deleting. Switching is done in the
-// "Now simulating" bar (Switcher.tsx).
+// Saving and switching inside the Setup screen's sections:
+//  - TeamSaveBar (top of the Team section): choose a saved team, save the team, manage saved teams.
+//  - RotationSaveBar (top of the Rotation section): choose one of the loaded team's rotations,
+//    save the rotation, make a rotation main.
+// The "Now simulating" bar (Switcher.tsx) does quick swaps with the same switching and warnings.
 
 import { useState } from 'react';
 import { canShareFiles } from '../history/files';
-import { mainRotation, rotationsMainFirst, teamCharacterNames, type SavedTeam } from '../teams/model';
-import type { LoadedState } from './Switcher';
+import { mainRotation, rotationsMainFirst, teamCharacterNames, unsavedWork, type LoadedState, type SavedTeam } from '../teams/model';
+import { SwitchConfirm } from './Switcher';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -55,7 +57,7 @@ function NewTeamInput({ onSave, onCancel }: { onSave: (name: string, rotationLab
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Skirk Freeze" autoFocus onKeyDown={(e) => e.key === 'Enter' && save()} />
       </label>
       <label className="field">
-        <span className="field-label">Name for this rotation (it becomes the main one)</span>
+        <span className="field-label">Name for the rotation below (it becomes the main one)</span>
         <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Main" onKeyDown={(e) => e.key === 'Enter' && save()} />
       </label>
       <div className="button-row">
@@ -70,250 +72,309 @@ function NewTeamInput({ onSave, onCancel }: { onSave: (name: string, rotationLab
   );
 }
 
-type Props = LoadedState & {
+type TeamProps = LoadedState & {
   savedTeams: SavedTeam[];
-  onSaveNewTeam: (name: string, rotationLabel: string) => void;
-  /** Saves the edits to the loaded team and to the loaded rotation. */
+  /** Loads a saved team with its main rotation. `save` saves the loaded team and rotation first. */
+  onSwitchTeam: (teamId: string, save: boolean) => void;
   onSaveChanges: () => void;
-  onSaveNewRotation: (label: string) => void;
-  onRenameTeam: (id: string, name: string) => void;
-  onDeleteTeam: (id: string) => void;
-  onRenameRotation: (rotationId: string, label: string) => void;
-  onDeleteRotation: (rotationId: string) => void;
-  onMakeMain: (rotationId: string) => void;
+  onSaveNew: (name: string, rotationLabel: string) => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
   onExport: (teams: SavedTeam[], share: boolean) => void;
   onImportFile: (file: File) => void;
   message?: string;
 };
 
-export function SavedPanel(p: Props) {
-  const [naming, setNaming] = useState<'team' | 'rotation' | null>(null);
+export function TeamSaveBar(p: TeamProps) {
+  const [naming, setNaming] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: 'team' | 'rotation'; id: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const sharing = canShareFiles();
   const t = p.activeTeam;
-  const main = t && mainRotation(t);
-  // "Save changes" saves what can be saved: a team needs characters and a rotation needs a Loop.
-  const canSaveChanges = (p.teamDirty && p.hasTeam) || (p.rotationDirty && p.hasRotation);
-  const whyNotNewTeam = !p.hasTeam ? 'Add a character first.' : !p.hasRotation ? 'Write a Loop below first: a team is saved with its main rotation.' : '';
+  const whyNotNew = !p.hasTeam ? 'Add a character first.' : !p.hasRotation ? 'Write a Loop in the Rotation section first: a team is saved with its main rotation.' : '';
+  const pick = (id: string) => {
+    if (!id || id === t?.id) return;
+    if (unsavedWork(p, false)) setPending(id);
+    else p.onSwitchTeam(id, false);
+  };
 
   return (
-    <section className="card saved-teams">
-      <div className="card-head">
-        <h2>{t ? t.name : 'Save this team'}</h2>
-        <label className="link small file-link">
-          Import file…
-          <input
-            type="file"
-            accept=".json,application/json"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) p.onImportFile(file);
-              e.target.value = ''; // so choosing the same file again still works
-            }}
-          />
+    <div className="save-bar">
+      {p.savedTeams.length > 0 && (
+        <label className="field">
+          <span className="field-label">Saved team</span>
+          <select value={t?.id ?? ''} onChange={(e) => pick(e.target.value)} aria-label="Saved team">
+            {!t && <option value="">{p.hasTeam ? 'This team (not saved)' : 'Choose a saved team…'}</option>}
+            {p.savedTeams.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
         </label>
-      </div>
+      )}
+      {pending && (
+        <SwitchConfirm
+          lose={unsavedWork(p, false)}
+          sameTeam={false}
+          onSwitch={(save) => {
+            p.onSwitchTeam(pending, save);
+            setPending(null);
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
       <p className="small">
         {t ? (
-          <>
-            {p.teamDirty ? <span className="warn">Team changed since saved</span> : <span className="muted">Team saved</span>}
-            {' · '}
-            {p.activeRotation ? (
-              p.rotationDirty ? (
-                <span className="warn">rotation "{p.activeRotation.label}" changed</span>
-              ) : (
-                <span className="muted">rotation "{p.activeRotation.label}" saved</span>
-              )
-            ) : p.hasRotation ? (
-              <span className="warn">this rotation isn't saved</span>
-            ) : (
-              <span className="muted">no rotation</span>
-            )}
-          </>
+          p.teamDirty ? <span className="warn">Changed since saved</span> : <span className="muted">Saved</span>
         ) : (
-          <span className="muted">This team isn't saved. A team is saved together with its rotation, which becomes the team's main rotation.</span>
+          <span className="muted">This team isn't saved. It's saved together with the rotation below, which becomes its main rotation.</span>
         )}
       </p>
-
-      {naming === 'team' ? (
+      {naming ? (
         <NewTeamInput
           onSave={(name, label) => {
-            p.onSaveNewTeam(name, label);
-            setNaming(null);
+            p.onSaveNew(name, label);
+            setNaming(false);
           }}
-          onCancel={() => setNaming(null)}
+          onCancel={() => setNaming(false)}
         />
-      ) : naming === 'rotation' ? (
+      ) : (
+        <div className="button-row">
+          {t && p.teamDirty && p.hasTeam && (
+            <button className="small-button" onClick={p.onSaveChanges}>
+              Save changes to team
+            </button>
+          )}
+          <button className="secondary small-button" onClick={() => setNaming(true)} disabled={!!whyNotNew}>
+            Save as new team…
+          </button>
+        </div>
+      )}
+      {whyNotNew && !t && !naming && <p className="small muted">{whyNotNew}</p>}
+      {p.message && <p className="small muted">{p.message}</p>}
+
+      <details className="saved-list">
+        <summary>All saved teams ({p.savedTeams.length}): rename, export, delete, import</summary>
+        <ul className="run-list">
+          {p.savedTeams.map((s) => (
+            <li key={s.id} className={s.id === t?.id ? 'run-row open' : 'run-row'}>
+              <div className="run-name">
+                {s.name}
+                {s.id === t?.id && <span className="muted small"> · loaded</span>}
+              </div>
+              <div className="muted small">
+                {teamCharacterNames(s.team).join(', ') || 'empty'} · {plural(s.rotations.length, 'rotation')}
+              </div>
+              {renaming === s.id ? (
+                <NameInput
+                  initial={s.name}
+                  placeholder="Team name"
+                  onSave={(name) => {
+                    p.onRename(s.id, name);
+                    setRenaming(null);
+                  }}
+                  onCancel={() => setRenaming(null)}
+                />
+              ) : (
+                <div className="button-row tight">
+                  <button className="link small" onClick={() => setRenaming(s.id)}>
+                    Rename
+                  </button>
+                  <button className="link small" onClick={() => p.onExport([s], false)}>
+                    Export
+                  </button>
+                  {sharing && (
+                    <button className="link small" onClick={() => p.onExport([s], true)}>
+                      Share
+                    </button>
+                  )}
+                  <button className="link small danger-text" onClick={() => setConfirmDelete(s.id)}>
+                    Delete
+                  </button>
+                </div>
+              )}
+              {confirmDelete === s.id && (
+                <Confirm
+                  text={`Delete the saved team "${s.name}" and its rotations? Runs in your History are kept${s.id === t?.id ? ', and the team on screen stays, but unsaved' : ''}.`}
+                  yes="Delete"
+                  onYes={() => {
+                    p.onDelete(s.id);
+                    setConfirmDelete(null);
+                  }}
+                  onNo={() => setConfirmDelete(null)}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="button-row">
+          {p.savedTeams.length > 0 && (
+            <>
+              <button className="secondary small-button" onClick={() => p.onExport(p.savedTeams, false)}>
+                Export all teams
+              </button>
+              {sharing && (
+                <button className="secondary small-button" onClick={() => p.onExport(p.savedTeams, true)}>
+                  Share all teams
+                </button>
+              )}
+            </>
+          )}
+          <label className="secondary small-button file-button">
+            Import team file…
+            <input
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) p.onImportFile(file);
+                e.target.value = ''; // so choosing the same file again still works
+              }}
+            />
+          </label>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+type RotationProps = LoadedState & {
+  /** Loads one of the loaded team's rotations. `save` saves the loaded rotation first. */
+  onSwitchRotation: (rotationId: string, save: boolean) => void;
+  onSaveChanges: () => void;
+  onSaveNew: (label: string) => void;
+  onRename: (rotationId: string, label: string) => void;
+  onDelete: (rotationId: string) => void;
+  onMakeMain: (rotationId: string) => void;
+  message?: string;
+};
+
+export function RotationSaveBar(p: RotationProps) {
+  const [naming, setNaming] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const t = p.activeTeam;
+  if (!t) {
+    return (
+      <p className="small muted save-bar">
+        Rotations are saved with a team. Save the team above, and the rotation below is saved with it as its main rotation.
+      </p>
+    );
+  }
+  const main = mainRotation(t);
+  const current = p.activeRotation;
+  const pick = (id: string) => {
+    if (id === current?.id) return;
+    if (unsavedWork(p, true)) setPending(id);
+    else p.onSwitchRotation(id, false);
+  };
+
+  return (
+    <div className="save-bar">
+      {t.rotations.length > 0 ? (
+        <>
+          <span className="field-label">Saved rotations for {t.name}</span>
+          <div className="name-chips" role="radiogroup" aria-label="Saved rotations">
+            {rotationsMainFirst(t).map((r) => (
+              <button key={r.id} role="radio" aria-checked={r.id === current?.id} className={r.id === current?.id ? 'chip selected' : 'chip'} onClick={() => pick(r.id)}>
+                {r.label}
+                {r.id === main?.id && <span className="main-star"> ★</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="small warn">{t.name} has no saved rotation yet. Write one below and use "Save rotation as new": it becomes the main rotation.</p>
+      )}
+      {pending && (
+        <SwitchConfirm
+          lose={unsavedWork(p, true)}
+          sameTeam
+          onSwitch={(save) => {
+            p.onSwitchRotation(pending, save);
+            setPending(null);
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
+      <p className="small">
+        {current ? (
+          <>
+            <strong>{current.label}</strong>
+            {current.id === main?.id && <span className="main-star"> ★ main</span>}
+            {p.rotationDirty ? <span className="warn"> · changed since saved</span> : <span className="muted"> · saved</span>}
+          </>
+        ) : (
+          <span className="muted">The rotation below isn't saved.</span>
+        )}
+      </p>
+      {naming ? (
         <NameInput
           initial=""
           placeholder="Rotation name, e.g. Double Q"
           saveLabel="Save rotation"
           onSave={(label) => {
-            p.onSaveNewRotation(label);
-            setNaming(null);
+            p.onSaveNew(label);
+            setNaming(false);
           }}
-          onCancel={() => setNaming(null)}
+          onCancel={() => setNaming(false)}
+        />
+      ) : renaming && current ? (
+        <NameInput
+          initial={current.label}
+          placeholder="Rotation name"
+          onSave={(label) => {
+            p.onRename(current.id, label);
+            setRenaming(false);
+          }}
+          onCancel={() => setRenaming(false)}
         />
       ) : (
-        <>
-          <div className="button-row">
-            {t && canSaveChanges && (
-              <button className="small-button" onClick={p.onSaveChanges}>
-                Save changes
-              </button>
-            )}
-            {t && (
-              <button className="secondary small-button" onClick={() => setNaming('rotation')} disabled={!p.hasRotation}>
-                Save rotation as new…
-              </button>
-            )}
-            <button className="secondary small-button" onClick={() => setNaming('team')} disabled={!!whyNotNewTeam}>
-              Save as new team…
+        <div className="button-row">
+          {current && p.rotationDirty && p.hasRotation && (
+            <button className="small-button" onClick={p.onSaveChanges}>
+              Save changes to rotation
             </button>
-          </div>
-          {whyNotNewTeam && !t && <p className="small muted">{whyNotNewTeam}</p>}
-        </>
+          )}
+          <button className="secondary small-button" onClick={() => setNaming(true)} disabled={!p.hasRotation}>
+            Save rotation as new…
+          </button>
+          {current && current.id !== main?.id && (
+            <button className="secondary small-button" onClick={() => p.onMakeMain(current.id)}>
+              Make main ★
+            </button>
+          )}
+          {current && (
+            <button className="link small" onClick={() => setRenaming(true)}>
+              Rename
+            </button>
+          )}
+          {current && current.id !== main?.id && (
+            <button className="link small danger-text" onClick={() => setConfirmDelete(true)}>
+              Delete
+            </button>
+          )}
+        </div>
+      )}
+      {current && current.id === main?.id && t.rotations.length > 1 && !naming && !renaming && (
+        <p className="small muted">The main rotation can't be deleted. Make another one main first.</p>
+      )}
+      {confirmDelete && current && (
+        <Confirm
+          text={`Delete the saved rotation "${current.label}"? The rotation below stays, but unsaved.`}
+          yes="Delete"
+          onYes={() => {
+            p.onDelete(current.id);
+            setConfirmDelete(false);
+          }}
+          onNo={() => setConfirmDelete(false)}
+        />
       )}
       {p.message && <p className="small muted">{p.message}</p>}
-
-      {t && t.rotations.length > 0 && (
-        <>
-          <h3>Rotations</h3>
-          <ul className="run-list">
-            {rotationsMainFirst(t).map((r) => {
-              const isMain = r.id === main?.id;
-              return (
-                <li key={r.id} className={r.id === p.activeRotation?.id ? 'run-row open' : 'run-row'}>
-                  <div className="saved-row">
-                    <div>
-                      <div className="run-name">
-                        {r.label}
-                        {isMain && <span className="main-star"> ★ main</span>}
-                        {r.id === p.activeRotation?.id && <span className="muted small"> · loaded</span>}
-                      </div>
-                      <div className="muted small rotation-peek">{r.rotation.loop.split('\n')[0]}</div>
-                    </div>
-                    {!isMain && (
-                      <button className="secondary small-button" onClick={() => p.onMakeMain(r.id)}>
-                        Make main
-                      </button>
-                    )}
-                  </div>
-                  {renaming === r.id ? (
-                    <NameInput
-                      initial={r.label}
-                      placeholder="Rotation name"
-                      onSave={(label) => {
-                        p.onRenameRotation(r.id, label);
-                        setRenaming(null);
-                      }}
-                      onCancel={() => setRenaming(null)}
-                    />
-                  ) : (
-                    <div className="button-row tight">
-                      <button className="link small" onClick={() => setRenaming(r.id)}>
-                        Rename
-                      </button>
-                      {isMain ? (
-                        <span className="muted small">The main rotation can't be deleted. Make another one main first.</span>
-                      ) : (
-                        <button className="link small danger-text" onClick={() => setConfirm({ kind: 'rotation', id: r.id })}>
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {confirm?.kind === 'rotation' && confirm.id === r.id && (
-                    <Confirm
-                      text={`Delete the saved rotation "${r.label}"? ${r.id === p.activeRotation?.id ? 'The rotation below stays as it is, but unsaved.' : ''}`}
-                      yes="Delete"
-                      onYes={() => {
-                        p.onDeleteRotation(r.id);
-                        setConfirm(null);
-                      }}
-                      onNo={() => setConfirm(null)}
-                    />
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-      {t && t.rotations.length === 0 && (
-        <p className="small warn">This team has no saved rotation yet. Write one below and use "Save rotation as new": it becomes the main rotation.</p>
-      )}
-
-      {p.savedTeams.length > 0 && (
-        <details className="saved-list">
-          <summary>All saved teams ({p.savedTeams.length}): rename, export, delete</summary>
-          <p className="small muted">To load a team, use the "Now simulating" bar above.</p>
-          <ul className="run-list">
-            {p.savedTeams.map((s) => (
-              <li key={s.id} className={s.id === t?.id ? 'run-row open' : 'run-row'}>
-                <div className="run-name">
-                  {s.name}
-                  {s.id === t?.id && <span className="muted small"> · loaded</span>}
-                </div>
-                <div className="muted small">
-                  {teamCharacterNames(s.team).join(', ') || 'empty'} · {plural(s.rotations.length, 'rotation')}
-                </div>
-                {renaming === s.id ? (
-                  <NameInput
-                    initial={s.name}
-                    placeholder="Team name"
-                    onSave={(name) => {
-                      p.onRenameTeam(s.id, name);
-                      setRenaming(null);
-                    }}
-                    onCancel={() => setRenaming(null)}
-                  />
-                ) : (
-                  <div className="button-row tight">
-                    <button className="link small" onClick={() => setRenaming(s.id)}>
-                      Rename
-                    </button>
-                    <button className="link small" onClick={() => p.onExport([s], false)}>
-                      Export
-                    </button>
-                    {sharing && (
-                      <button className="link small" onClick={() => p.onExport([s], true)}>
-                        Share
-                      </button>
-                    )}
-                    <button className="link small danger-text" onClick={() => setConfirm({ kind: 'team', id: s.id })}>
-                      Delete
-                    </button>
-                  </div>
-                )}
-                {confirm?.kind === 'team' && confirm.id === s.id && (
-                  <Confirm
-                    text={`Delete the saved team "${s.name}" and its rotations? Runs in your History are kept${s.id === t?.id ? ', and the team below stays as it is, but unsaved' : ''}.`}
-                    yes="Delete"
-                    onYes={() => {
-                      p.onDeleteTeam(s.id);
-                      setConfirm(null);
-                    }}
-                    onNo={() => setConfirm(null)}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-          <div className="button-row">
-            <button className="secondary small-button" onClick={() => p.onExport(p.savedTeams, false)}>
-              Export all teams
-            </button>
-            {sharing && (
-              <button className="secondary small-button" onClick={() => p.onExport(p.savedTeams, true)}>
-                Share all teams
-              </button>
-            )}
-          </div>
-        </details>
-      )}
-    </section>
+    </div>
   );
 }

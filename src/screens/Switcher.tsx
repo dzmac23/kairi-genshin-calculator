@@ -92,32 +92,19 @@ export default function Switcher(p: Props) {
 
       {step?.kind === 'rotation' && <RotationStep team={p.savedTeams.find((t) => t.id === step.teamId)} activeRotationId={step.teamId === loaded?.id ? p.activeRotation?.id : undefined} onBack={() => setStep({ kind: 'team' })} onPick={(rid) => choose(step.teamId, rid)} />}
 
-      {step?.kind === 'confirm' && (() => {
-        const lose = unsavedWork(p, step.teamId === loaded?.id);
-        const go = (save: boolean) => {
-          p.onSwitch(step.teamId, step.rotationId, save);
-          close();
-        };
-        return (
-          <div className="switcher-panel callout warn-callout">
-            <p className="small">{lose?.text} Switching replaces {step.teamId === loaded?.id ? 'the rotation' : 'the team and rotation'} on the Setup screen.</p>
-            <div className="button-row">
-              {lose?.savable && (
-                <button className="small-button" onClick={() => go(true)}>
-                  Save changes and switch
-                </button>
-              )}
-              <button className="secondary small-button" onClick={() => go(false)}>
-                Switch without saving
-              </button>
-              <button className="link small" onClick={close}>
-                Cancel
-              </button>
-            </div>
-            {lose && !lose.savable && <p className="small muted">To keep it, cancel and use "Save as new" below first.</p>}
-          </div>
-        );
-      })()}
+      {step?.kind === 'confirm' && (
+        <div className="switcher-panel">
+          <SwitchConfirm
+            lose={unsavedWork(p, step.teamId === loaded?.id)}
+            sameTeam={step.teamId === loaded?.id}
+            onSwitch={(save) => {
+              p.onSwitch(step.teamId, step.rotationId, save);
+              close();
+            }}
+            onCancel={close}
+          />
+        </div>
+      )}
     </section>
   );
 }
@@ -146,6 +133,34 @@ function RotationStep({ team, activeRotationId, onBack, onPick }: { team?: Saved
       <button className="link small" onClick={onBack}>
         ← Back to teams
       </button>
+    </div>
+  );
+}
+
+/**
+ * The warning shown before a switch would replace unsaved work: "Save changes and switch" (only
+ * for edits to a saved team or rotation), "Switch without saving" and "Cancel".
+ */
+export function SwitchConfirm({ lose, sameTeam, onSwitch, onCancel }: { lose?: { savable: boolean; text: string }; sameTeam: boolean; onSwitch: (save: boolean) => void; onCancel: () => void }) {
+  return (
+    <div className="callout warn-callout switch-confirm">
+      <p className="small">
+        {lose?.text} Switching replaces {sameTeam ? 'the rotation' : 'the team and rotation'} on the Setup screen.
+      </p>
+      <div className="button-row">
+        {lose?.savable && (
+          <button className="small-button" onClick={() => onSwitch(true)}>
+            Save changes and switch
+          </button>
+        )}
+        <button className="secondary small-button" onClick={() => onSwitch(false)}>
+          Switch without saving
+        </button>
+        <button className="link small" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      {lose && !lose.savable && <p className="small muted">To keep it, cancel and save it first.</p>}
     </div>
   );
 }

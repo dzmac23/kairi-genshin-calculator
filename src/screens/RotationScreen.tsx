@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { BuildResult } from '../config/build';
 import type { RotationText, TeamMember, Turn } from '../rotation/notation';
 import { DEFAULT_TOKEN_TABLE } from '../rotation/tokens';
@@ -16,6 +16,8 @@ type Props = {
   members: TeamMember[];
   built?: BuildResult;
   onGoToRun: () => void;
+  /** Saved-rotation controls shown at the top of the Rotation section. */
+  saveBar?: ReactNode;
 };
 
 const EXAMPLES = {
@@ -58,6 +60,7 @@ export default function RotationScreen(props: Props) {
             onNo={() => setConfirmClear(false)}
           />
         )}
+        {props.saveBar}
         <p className="muted small">
           One turn per character, separated by <code>&gt;</code> or new lines. Start each turn with the character's name
           (any word of it is enough), then their moves. The <strong>Opener</strong> runs once at the start; the{' '}
