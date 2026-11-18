@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getEngineVersion, type EngineVersion } from '../engine/version';
 import { canShareFiles } from '../history/files';
 
-export type HomeTarget = 'Team' | 'Rotation' | 'Run' | 'Results' | 'Compare' | 'History';
+export type HomeTarget = 'Setup' | 'Run' | 'Results' | 'Compare' | 'History';
 
 type Props = {
   onGo: (screen: HomeTarget) => void;
@@ -14,9 +14,8 @@ type Props = {
 };
 
 const STEPS: { screen: HomeTarget; title: string; text: string }[] = [
-  { screen: 'Team', title: 'Build your team', text: 'Pick four characters, their weapons, artifact sets and artifact stat totals. Save it to reuse it.' },
-  { screen: 'Rotation', title: 'Write the rotation', text: 'Type it the community way (Furina E D Q > Skirk tE N5 Q …) and set the fight: length, enemies, energy.' },
-  { screen: 'Run', title: 'Run it', text: '100 fights for a quick look, 500 by default, 1,000 for numbers worth sharing.' },
+  { screen: 'Setup', title: 'Set up the team and rotation', text: 'Pick four characters, their weapons, artifact sets and stats, then type the rotation the community way (Furina E D Q > Skirk tE N5 Q …). Save the team: its first rotation becomes its main one.' },
+  { screen: 'Run', title: 'Run it', text: 'Switch team or rotation in one tap, set the fight (length, enemies, energy), and run 100, 500 or 1,000 fights.' },
   { screen: 'Results', title: 'Read the results', text: 'Team DPS, who does the damage, time lost waiting, rotation timing, damage over the fight, energy.' },
   { screen: 'Compare', title: 'Compare', text: 'Change one thing, run again, and see whether it is really better or just luck.' },
 ];
@@ -104,7 +103,7 @@ export default function HomeScreen({ onGo, onBackup, onImportFile, backupMessage
         {version && version !== 'missing' && (
           <p className="muted small">
             gcsim {version.gcsimTag} ({version.gcsimCommit.slice(0, 7)}), built with {version.goVersion}. Characters gcsim
-            doesn't support yet are marked on the Team screen.
+            doesn't support yet are marked on the Setup screen.
           </p>
         )}
       </section>

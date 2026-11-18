@@ -70,7 +70,7 @@ export function buildConfig(
 
   const translation = translateRotation(rotation, teamMembers(team, data), table);
   const loopTurns = translation.turns.filter((t) => t.section === 'loop');
-  if (!rotation.loop.trim()) problems.push('Rotation: type a Loop on the Rotation screen.');
+  if (!rotation.loop.trim()) problems.push('Rotation: type a Loop in the Rotation section of the Setup screen.');
   for (const t of translation.turns) {
     if (t.error) problems.push(`Rotation (${t.section === 'opener' ? 'Opener' : 'Loop'} turn ${t.index}): ${t.error}`);
   }

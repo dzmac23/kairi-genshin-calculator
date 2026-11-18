@@ -12,7 +12,7 @@ import { cleanSavedTeam, isSavedTeam, type ActiveSaved, type SavedTeam } from '.
 
 export type TransferKind = 'runs' | 'teams' | 'backup';
 
-/** The current Team/Rotation screens and settings, as kept in a full backup. */
+/** The current Setup screen and settings, as kept in a full backup. */
 export type CurrentSetup = {
   team: Team;
   rotation: RotationText;

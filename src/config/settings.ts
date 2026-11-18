@@ -1,4 +1,4 @@
-// Fight settings for the simulation, as shown on the Rotation screen.
+// Fight settings for the simulation, as shown on the Run screen.
 
 export type SimSettings = {
   duration: number; // seconds

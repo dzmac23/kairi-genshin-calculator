@@ -8,8 +8,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import ImportCard, { type ImportChoice } from './components/ImportCard';
 import { deliverFile } from './history/files';
 import { runName, type RunRecord } from './history/model';
-import { SavedRotationsBar, SavedTeamsPanel } from './screens/SavedTeams';
-import { cleanSavedTeam, isSavedTeam, sameRotation, sameTeam, savedNames, type ActiveSaved, type SavedTeam } from './teams/model';
+import { SavedPanel } from './screens/SavedTeams';
+import Switcher, { type LoadedState } from './screens/Switcher';
+import { cleanSavedTeam, isSavedTeam, mainRotation, removeRotation, sameRotation, sameTeam, savedNames, type ActiveSaved, type SavedTeam } from './teams/model';
 import { makeFile, readTransferFile, type TransferPreview } from './transfer';
 import { useHistory } from './history/useHistory';
 import type { RotationText } from './rotation/notation';
@@ -21,11 +22,12 @@ import RotationScreen from './screens/RotationScreen';
 import ResultsScreen from './screens/ResultsScreen';
 import RunScreen, { type RunSource } from './screens/RunScreen';
 import TeamScreen from './screens/TeamScreen';
+import { emptySlot } from './team/model';
 import { useTeam } from './team/useTeam';
 import { usePersistentState } from './usePersistentState';
 import { useSimulation, type FinishedRun } from './useSimulation';
 
-const screens = ['Home', 'Team', 'Rotation', 'Run', 'Results', 'Compare', 'History'] as const;
+const screens = ['Home', 'Setup', 'Run', 'Results', 'Compare', 'History'] as const;
 type Screen = (typeof screens)[number];
 
 /** A saved run as the Results screen shows it. */
@@ -63,7 +65,7 @@ export default function App() {
   );
   const data = useGameData();
   const parsedTable = useMemo(() => parseTokenTable(tokenTable), [tokenTable]);
-  // The config built from the Team and Rotation screens (iterations are set on the Run screen).
+  // The config built from the Setup screen and the fight settings (iterations are set on the Run screen).
   const built = useMemo((): BuildResult | undefined => {
     if (!data) return undefined;
     try {
@@ -71,7 +73,7 @@ export default function App() {
     } catch (error) {
       // Never let unexpected data take the whole app down: show it as a problem on the Run screen.
       return {
-        problems: [`Couldn't build the config: ${error instanceof Error ? error.message : String(error)}. Check the Team and Rotation screens.`],
+        problems: [`Couldn't build the config: ${error instanceof Error ? error.message : String(error)}. Check the Setup screen.`],
         notes: [],
         translation: { turns: [], ok: false, counters: { loop: false, cycles: [] } },
       };
@@ -85,7 +87,7 @@ export default function App() {
   const [runLabel, setRunLabel] = useState('');
   const [iterations, setIterations] = usePersistentState('iterations', 500, (v) => ([100, 500, 1000].includes(v as number) ? (v as number) : undefined));
 
-  // Saved teams (with labelled rotations), and which one the Team and Rotation screens came from.
+  // Saved teams (with labelled rotations, one of them main), and which one the Setup screen came from.
   const [savedTeams, setSavedTeams] = usePersistentState<SavedTeam[]>('savedTeams', [], (v) =>
     Array.isArray(v) ? v.filter(isSavedTeam).map(cleanSavedTeam) : undefined,
   );
@@ -94,28 +96,46 @@ export default function App() {
   const activeRotation = activeTeam?.rotations.find((r) => r.id === active.rotationId);
   const teamDirty = !!activeTeam && !sameTeam(activeTeam.team, team);
   const rotationDirty = !!activeRotation && !sameRotation(activeRotation.rotation, rotation);
+  const hasTeam = team.some((s) => s.character);
+  const hasRotation = !!rotation.loop.trim();
+  const loadedState: LoadedState = { activeTeam, activeRotation, teamDirty, rotationDirty, hasTeam, hasRotation };
   const [teamMessage, setTeamMessage] = useState('');
   const [backupMessage, setBackupMessage] = useState('');
   const nowIso = () => new Date().toISOString();
   const updateTeam = (id: string, change: (t: SavedTeam) => SavedTeam) =>
     setSavedTeams((ts) => ts.map((t) => (t.id === id ? { ...change(t), updatedAt: nowIso() } : t)));
+  /** Saves the edits to the loaded team and rotation (a team needs characters, a rotation a Loop). */
+  const saveChanges = () => {
+    if (!activeTeam) return;
+    const saveTeam = teamDirty && hasTeam;
+    const saveRotation = rotationDirty && hasRotation && activeRotation;
+    updateTeam(activeTeam.id, (t) => ({
+      ...t,
+      team: saveTeam ? structuredClone(team) : t.team,
+      rotations: saveRotation ? t.rotations.map((r) => (r.id === activeRotation.id ? { ...r, rotation: { ...rotation } } : r)) : t.rotations,
+    }));
+    setTeamMessage(`Saved changes to "${activeTeam.name}".`);
+  };
+  /** Loads a saved team with one of its rotations (its main rotation if none is given). */
+  const switchTo = (teamId: string, rotationId: string | undefined, saveFirst: boolean) => {
+    if (saveFirst) saveChanges();
+    const t = savedTeams.find((x) => x.id === teamId);
+    if (!t) return;
+    // Switching rotation within the loaded team keeps the team as it is on screen.
+    if (t.id !== activeTeam?.id) setTeam(structuredClone(t.team));
+    const r = t.rotations.find((x) => x.id === rotationId) ?? mainRotation(t);
+    if (r) setRotation({ ...r.rotation });
+    setActive({ teamId: t.id, rotationId: r?.id });
+    setTeamMessage(`Loaded "${t.name}"${r ? ` with the rotation "${r.label}"` : ''}.`);
+  };
   const teamActions = {
-    saveNew: (name: string) => {
-      const rotations = rotation.loop.trim() ? [{ id: crypto.randomUUID(), label: 'Main', rotation: { ...rotation } }] : [];
-      const saved: SavedTeam = { id: crypto.randomUUID(), name, team: structuredClone(team), rotations, createdAt: nowIso(), updatedAt: nowIso() };
+    saveNew: (name: string, rotationLabel: string) => {
+      if (!hasTeam || !hasRotation) return; // a team is always saved with its main rotation
+      const r = { id: crypto.randomUUID(), label: rotationLabel, rotation: { ...rotation } };
+      const saved: SavedTeam = { id: crypto.randomUUID(), name, team: structuredClone(team), rotations: [r], mainRotationId: r.id, createdAt: nowIso(), updatedAt: nowIso() };
       setSavedTeams((ts) => [...ts, saved]);
-      setActive({ teamId: saved.id, rotationId: rotations[0]?.id });
-      setTeamMessage(`Saved "${name}"${rotations.length ? ' with the current rotation as "Main"' : ''}.`);
-    },
-    saveChanges: () => activeTeam && updateTeam(activeTeam.id, (t) => ({ ...t, team: structuredClone(team) })),
-    load: (id: string) => {
-      const t = savedTeams.find((x) => x.id === id);
-      if (!t) return;
-      setTeam(structuredClone(t.team));
-      const r = t.rotations[0];
-      if (r) setRotation({ ...r.rotation });
-      setActive({ teamId: id, rotationId: r?.id });
-      setTeamMessage(`Loaded "${t.name}"${r ? ` with rotation "${r.label}"` : ''}.`);
+      setActive({ teamId: saved.id, rotationId: r.id });
+      setTeamMessage(`Saved "${name}" with "${rotationLabel}" as its main rotation.`);
     },
     rename: (id: string, name: string) => updateTeam(id, (t) => ({ ...t, name })),
     remove: (id: string) => {
@@ -123,32 +143,37 @@ export default function App() {
       if (active.teamId === id) setActive({});
     },
     export: async (list: SavedTeam[], share: boolean) => setTeamMessage(await deliverFile(makeFile('teams', { teams: list }), share)),
+    /** Empties the four slots. The rotation stays on screen, no longer linked to a saved team. */
+    clear: () => {
+      setTeam([emptySlot(), emptySlot(), emptySlot(), emptySlot()]);
+      setActive({});
+      setTeamMessage('');
+    },
   };
   const rotationActions = {
     saveNew: (label: string) => {
-      if (!activeTeam) return;
+      if (!activeTeam || !hasRotation) return;
       const r = { id: crypto.randomUUID(), label, rotation: { ...rotation } };
-      updateTeam(activeTeam.id, (t) => ({ ...t, rotations: [...t.rotations, r] }));
+      // A team without rotations (saved before main rotations) gets this one as its main.
+      updateTeam(activeTeam.id, (t) => ({ ...t, rotations: [...t.rotations, r], mainRotationId: t.rotations.length ? t.mainRotationId : r.id }));
       setActive({ teamId: activeTeam.id, rotationId: r.id });
-    },
-    saveChanges: () =>
-      activeTeam &&
-      activeRotation &&
-      updateTeam(activeTeam.id, (t) => ({ ...t, rotations: t.rotations.map((r) => (r.id === activeRotation.id ? { ...r, rotation: { ...rotation } } : r)) })),
-    load: (rid: string) => {
-      const r = activeTeam?.rotations.find((x) => x.id === rid);
-      if (!r || !activeTeam) return;
-      setRotation({ ...r.rotation });
-      setActive({ teamId: activeTeam.id, rotationId: rid });
+      setTeamMessage(`Saved the rotation "${label}" to "${activeTeam.name}".`);
     },
     rename: (rid: string, label: string) =>
       activeTeam && updateTeam(activeTeam.id, (t) => ({ ...t, rotations: t.rotations.map((r) => (r.id === rid ? { ...r, label } : r)) })),
+    makeMain: (rid: string) => activeTeam && updateTeam(activeTeam.id, (t) => ({ ...t, mainRotationId: rid })),
     remove: (rid: string) => {
       if (!activeTeam) return;
-      updateTeam(activeTeam.id, (t) => ({ ...t, rotations: t.rotations.filter((r) => r.id !== rid) }));
+      updateTeam(activeTeam.id, (t) => removeRotation(t, rid));
       if (active.rotationId === rid) setActive({ teamId: activeTeam.id });
     },
+    /** Empties the Opener and Loop. The team stays loaded; the rotation is no longer linked. */
+    clear: () => {
+      setRotation({ opener: '', loop: '' });
+      if (activeTeam) setActive({ teamId: activeTeam.id });
+    },
   };
+  const switcher = <Switcher {...loadedState} savedTeams={savedTeams} onSwitch={switchTo} onGoToSetup={() => setScreen('Setup')} />;
 
   // One import flow for every Import button: read the file, preview it, then add what was chosen.
   // Compare: Scenario A and B (from History, or a run file that isn't added to History), and
@@ -307,56 +332,42 @@ export default function App() {
             counts={{ runs: history.runs.length, teams: savedTeams.length }}
           />
         )}
-        {screen === 'Team' && (
-          <TeamScreen
-            team={team}
-            onChange={setTeam}
-            onGoToRotation={() => setScreen('Rotation')}
-            header={
-              <SavedTeamsPanel
-                savedTeams={savedTeams}
-                active={activeTeam}
-                dirty={teamDirty}
-                canSave={team.some((s) => s.character)}
-                onLoad={teamActions.load}
-                onSaveNew={teamActions.saveNew}
-                onSaveChanges={teamActions.saveChanges}
-                onRename={teamActions.rename}
-                onDelete={teamActions.remove}
-                onExport={teamActions.export}
-                onImportFile={openImport}
-                message={teamMessage}
-              />
-            }
-          />
-        )}
-        {screen === 'Rotation' && (
-          <RotationScreen
-            rotation={rotation}
-            onRotationChange={setRotation}
-            settings={settings}
-            onSettingsChange={setSettings}
-            tokenTable={tokenTable}
-            onTokenTableChange={setTokenTable}
-            members={data ? teamMembers(team, data) : []}
-            built={built}
-            onGoToRun={() => setScreen('Run')}
-            onGoToTeam={() => setScreen('Team')}
-            header={
-              <SavedRotationsBar
-                active={activeTeam}
-                activeRotationId={active.rotationId}
-                dirty={rotationDirty}
-                canSave={!!rotation.loop.trim()}
-                onLoad={rotationActions.load}
-                onSaveNew={rotationActions.saveNew}
-                onSaveChanges={rotationActions.saveChanges}
-                onRename={rotationActions.rename}
-                onDelete={rotationActions.remove}
-                onGoToTeam={() => setScreen('Team')}
-              />
-            }
-          />
+        {screen === 'Setup' && (
+          <>
+            <Switcher {...loadedState} savedTeams={savedTeams} onSwitch={switchTo} />
+            <SavedPanel
+              {...loadedState}
+              savedTeams={savedTeams}
+              onSaveNewTeam={teamActions.saveNew}
+              onSaveChanges={saveChanges}
+              onSaveNewRotation={rotationActions.saveNew}
+              onRenameTeam={teamActions.rename}
+              onDeleteTeam={teamActions.remove}
+              onRenameRotation={rotationActions.rename}
+              onDeleteRotation={rotationActions.remove}
+              onMakeMain={rotationActions.makeMain}
+              onExport={teamActions.export}
+              onImportFile={openImport}
+              message={teamMessage}
+            />
+            <TeamScreen
+              team={team}
+              onChange={setTeam}
+              onClear={teamActions.clear}
+              clearNeedsConfirm={activeTeam ? teamDirty : hasTeam}
+            />
+            <RotationScreen
+              rotation={rotation}
+              onRotationChange={setRotation}
+              onClear={rotationActions.clear}
+              clearNeedsConfirm={activeRotation ? rotationDirty : hasRotation}
+              tokenTable={tokenTable}
+              onTokenTableChange={setTokenTable}
+              members={data ? teamMembers(team, data) : []}
+              built={built}
+              onGoToRun={() => setScreen('Run')}
+            />
+          </>
         )}
         {screen === 'Run' && (
           <RunScreen
@@ -364,7 +375,10 @@ export default function App() {
             source={source}
             onSourceChange={setSource}
             built={built}
-            onGoTo={setScreen}
+            settings={settings}
+            onSettingsChange={setSettings}
+            switcher={switcher}
+            onGoToSetup={() => setScreen('Setup')}
             config={config}
             onConfigChange={setConfig}
             label={runLabel}
@@ -459,7 +473,7 @@ export default function App() {
               if (r.rotation) setRotation({ ...r.rotation });
               if (r.settings) setSettings(cleanSettings(r.settings));
               setSource('team');
-              setScreen('Rotation');
+              setScreen('Setup');
             }}
           />
         )}

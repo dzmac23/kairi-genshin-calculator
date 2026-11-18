@@ -1,18 +1,27 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
 import { useGameData, type GameData, type LevelKey } from '../data/gameData';
 import { checkTeam, teamToGcsim } from '../team/gcsim';
 import { ARTIFACT_STATS, CHARACTER_LEVELS, emptySlot, WEAPON_LEVELS, type Slot, type Team } from '../team/model';
 import { computeStats } from '../team/stats';
+import { Confirm } from './SavedTeams';
 
-type Props = { team: Team; onChange: (team: Team) => void; onGoToRotation: () => void; header?: ReactNode };
+type Props = {
+  team: Team;
+  onChange: (team: Team) => void;
+  /** Empties all four slots (and unlinks the saved team). */
+  onClear: () => void;
+  /** Clearing would lose unsaved work, so ask first. */
+  clearNeedsConfirm: boolean;
+};
 
 const TALENT_NAMES = ['Normal Attack', 'Elemental Skill', 'Elemental Burst'];
 
-export default function TeamScreen({ team, onChange, onGoToRotation, header }: Props) {
+export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm }: Props) {
   const data = useGameData();
   const [active, setActive] = useState(0);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   if (!data) {
     return (
@@ -28,9 +37,27 @@ export default function TeamScreen({ team, onChange, onGoToRotation, header }: P
 
   return (
     <>
-      {header}
       <section className="card">
-        <h2>Team</h2>
+        <div className="card-head">
+          <h2>Team</h2>
+          {team.some((s) => s.character) && (
+            <button className="secondary small-button" onClick={() => (clearNeedsConfirm ? setConfirmClear(true) : onClear())}>
+              Clear current team
+            </button>
+          )}
+        </div>
+        {confirmClear && (
+          <Confirm
+            text="Clear all four slots? Your unsaved changes to this team would be lost. The rotation stays."
+            yes="Clear team"
+            onYes={() => {
+              onClear();
+              setActive(0);
+              setConfirmClear(false);
+            }}
+            onNo={() => setConfirmClear(false)}
+          />
+        )}
         <p className="muted small">
           Four slots. Pick a slot, then fill in the character, weapon, artifact sets and artifact stats. Everything is
           saved on this device as you go.
@@ -53,7 +80,7 @@ export default function TeamScreen({ team, onChange, onGoToRotation, header }: P
 
       <SlotEditor key={active} index={active} slot={team[active]} data={data} onChange={(s) => updateSlot(active, s)} />
 
-      <TeamSummary team={team} data={data} problems={problems} onGoToRotation={onGoToRotation} />
+      <TeamSummary team={team} data={data} problems={problems} />
     </>
   );
 }
@@ -242,12 +269,10 @@ function TeamSummary({
   team,
   data,
   problems,
-  onGoToRotation,
 }: {
   team: Team;
   data: GameData;
   problems: ReturnType<typeof checkTeam>;
-  onGoToRotation: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const lines = teamToGcsim(team, data);
@@ -264,10 +289,7 @@ function TeamSummary({
     <section className="card">
       <h2>Team check</h2>
       {problems.length === 0 ? (
-        <>
-          <p>Team ready. Next, write the rotation and fight settings.</p>
-          <button onClick={onGoToRotation}>Go to Rotation</button>
-        </>
+        <p>Team ready. Next, write the rotation below.</p>
       ) : (
         <ul className="problems">
           {problems.map((p, i) => (
