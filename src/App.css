@@ -372,7 +372,7 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
   .scenarios, .team-sides { grid-template-columns: 1fr 1fr; }
 }
 
-/* Step 9: phone tab bar fits all seven tabs; Home steps */
+/* Step 9: phone tab bar fits all the tabs; Home steps */
 @media (max-width: 767px) {
   .tabs button { flex: 1 1 0; min-width: 0; padding: 0.75rem 0.15rem; font-size: 0.74rem; letter-spacing: -0.01em; }
   .tabs .dot { margin-left: 0.15rem; }
@@ -385,3 +385,28 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 
 .total-damage { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.35rem; font-variant-numeric: normal; }
 .total-damage .muted { font-size: 0.9rem; font-weight: 400; }
+
+/* Setup screen: "Now simulating" bar, team/rotation picker, main rotation */
+.switcher { padding: 0; border: 1px solid #5ec8f244; }
+.switcher-bar {
+  display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 0.75rem;
+  background: none; color: var(--text); text-align: left; padding: 0.7rem 1rem; border-radius: 12px;
+}
+.switcher-text { display: flex; flex-direction: column; min-width: 0; }
+.switcher-name { font-weight: 600; overflow-wrap: anywhere; }
+.switcher-action { flex: none; color: var(--accent); font-size: 0.9rem; font-weight: 600; }
+.switcher-panel { margin: 0 1rem 1rem; }
+.switcher-panel.callout { border-left: 3px solid var(--warn); background: #f28b5e14; border-radius: 6px; padding: 0.6rem 0.75rem; }
+.pick-list { list-style: none; padding: 0; margin: 0 0 0.5rem; display: grid; gap: 0.4rem; }
+.pick {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; width: 100%;
+  background: #232938; color: var(--text); text-align: left; padding: 0.55rem 0.75rem;
+}
+.pick.current { outline: 2px solid var(--accent); background: #1e3346; }
+.main-star { color: var(--gold); font-weight: 600; }
+.rotation-peek { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; display: block; }
+.new-team { display: grid; gap: 0.25rem; }
+.new-team input { width: 100%; }
+.pick-list { grid-template-columns: minmax(0, 1fr); }
+.pick { min-width: 0; overflow: hidden; }
+.saved-row > div { min-width: 0; }

@@ -1,22 +1,21 @@
-import { useState, type ReactNode } from 'react';
-import { NumberField, Segmented } from '../components/Fields';
+import { useState } from 'react';
 import type { BuildResult } from '../config/build';
-import { MAX_ENEMIES, type SimSettings } from '../config/settings';
 import type { RotationText, TeamMember, Turn } from '../rotation/notation';
 import { DEFAULT_TOKEN_TABLE } from '../rotation/tokens';
+import { Confirm } from './SavedTeams';
 
 type Props = {
   rotation: RotationText;
   onRotationChange: (rotation: RotationText) => void;
-  settings: SimSettings;
-  onSettingsChange: (s: SimSettings) => void;
+  /** Empties the Opener and Loop (and unlinks the saved rotation). */
+  onClear: () => void;
+  /** Clearing would lose unsaved work, so ask first. */
+  clearNeedsConfirm: boolean;
   tokenTable: string;
   onTokenTableChange: (text: string) => void;
   members: TeamMember[];
   built?: BuildResult;
   onGoToRun: () => void;
-  onGoToTeam: () => void;
-  header?: ReactNode;
 };
 
 const EXAMPLES = {
@@ -25,8 +24,8 @@ const EXAMPLES = {
 };
 
 export default function RotationScreen(props: Props) {
-  const { rotation, onRotationChange, settings, onSettingsChange, tokenTable, onTokenTableChange, members, built } = props;
-  const set = (patch: Partial<SimSettings>) => onSettingsChange({ ...settings, ...patch });
+  const { rotation, onRotationChange, tokenTable, onTokenTableChange, members, built } = props;
+  const [confirmClear, setConfirmClear] = useState(false);
 
   // Name chips add to whichever box was used last (the Loop to begin with).
   const [box, setBox] = useState<keyof RotationText>('loop');
@@ -39,9 +38,26 @@ export default function RotationScreen(props: Props) {
 
   return (
     <>
-      {props.header}
       <section className="card">
-        <h2>Rotation</h2>
+        <div className="card-head">
+          <h2>Rotation</h2>
+          {(rotation.opener.trim() || rotation.loop.trim()) && (
+            <button className="secondary small-button" onClick={() => (props.clearNeedsConfirm ? setConfirmClear(true) : props.onClear())}>
+              Clear current rotation
+            </button>
+          )}
+        </div>
+        {confirmClear && (
+          <Confirm
+            text="Clear the Opener and Loop? Your unsaved changes to this rotation would be lost. The team stays."
+            yes="Clear rotation"
+            onYes={() => {
+              props.onClear();
+              setConfirmClear(false);
+            }}
+            onNo={() => setConfirmClear(false)}
+          />
+        )}
         <p className="muted small">
           One turn per character, separated by <code>&gt;</code> or new lines. Start each turn with the character's name
           (any word of it is enough), then their moves. The <strong>Opener</strong> runs once at the start; the{' '}
@@ -57,9 +73,7 @@ export default function RotationScreen(props: Props) {
             ))}
           </div>
         ) : (
-          <p className="warn small">
-            Your team is empty. <button className="link" onClick={props.onGoToTeam}>Add characters on the Team screen</button> first.
-          </p>
+          <p className="warn small">Your team is empty. Add characters above first.</p>
         )}
         {(['opener', 'loop'] as const).map((section) => (
           <div key={section} className="rotation-box">
@@ -81,34 +95,6 @@ export default function RotationScreen(props: Props) {
             <TranslationPreview turns={turns.filter((t) => t.section === section)} />
           </div>
         ))}
-      </section>
-
-      <section className="card">
-        <h2>Fight settings</h2>
-        <div className="stat-grid">
-          <NumberField label="Fight length" suffix="s" value={settings.duration} onChange={(v) => set({ duration: v ?? 90 })} />
-          <NumberField label="Enemy level" suffix="" value={settings.enemyLevel} onChange={(v) => set({ enemyLevel: v ?? 100 })} />
-          <NumberField label="Enemy resistance" suffix="%" value={settings.enemyResist} onChange={(v) => set({ enemyResist: v ?? 10 })} />
-        </div>
-        <Segmented
-          label="Number of enemies"
-          value={settings.enemies}
-          values={Array.from({ length: MAX_ENEMIES }, (_, i) => i + 1)}
-          onChange={(enemies) => set({ enemies })}
-        />
-        {settings.enemies > 1 && (
-          <p className="muted small">
-            Extra enemies stand in a line beside the first, 4.1 m apart, so they don't overlap. Small area attacks may not
-            reach all of them.
-          </p>
-        )}
-        <label className="toggle">
-          <input type="checkbox" checked={settings.randomEnergy} onChange={(e) => set({ randomEnergy: e.target.checked })} />
-          <span>
-            Random energy particles
-            <span className="muted small"> (1 particle every 8 to 12 s, like enemies dropping energy)</span>
-          </span>
-        </label>
       </section>
 
       <section className="card">
@@ -147,7 +133,7 @@ export default function RotationScreen(props: Props) {
             ))}
           </ul>
         ) : (
-          <p>Ready. Your team and rotation will be checked by gcsim when you press Run.</p>
+          <p>Ready. Choose the fight settings on the Run screen; gcsim checks everything when you press Run.</p>
         )}
         {built?.notes.map((n) => (
           <p key={n} className="muted small">

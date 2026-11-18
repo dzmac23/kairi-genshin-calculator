@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Segmented } from '../components/Fields';
+import { useEffect, useState, type ReactNode } from 'react';
+import { NumberField, Segmented } from '../components/Fields';
 import type { BuildResult } from '../config/build';
+import { MAX_ENEMIES, type SimSettings } from '../config/settings';
 import { setIterations } from '../engine/config';
 import { workerCount } from '../engine/pool';
 import { isPlaceholderConfig, PLACEHOLDER_CONFIG, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
@@ -16,11 +17,16 @@ export type RunSource = 'team' | 'paste';
 
 type Props = {
   state: SimState;
-  /** Where the config comes from: the Team + Rotation screens, or a pasted gcsim config. */
+  /** Where the config comes from: the Setup screen, or a pasted gcsim config. */
   source: RunSource;
   onSourceChange: (source: RunSource) => void;
-  /** The config built from the Team and Rotation screens (undefined while game data loads). */
+  /** The config built from the Setup screen and fight settings (undefined while game data loads). */
   built?: BuildResult;
+  /** Fight settings (used for the Setup team; a pasted config has its own). */
+  settings: SimSettings;
+  onSettingsChange: (s: SimSettings) => void;
+  /** The "Now simulating" bar. */
+  switcher?: ReactNode;
   /** A pasted gcsim config. Kept in App so it survives switching tabs. Empty by default. */
   config: string;
   onConfigChange: (config: string) => void;
@@ -33,14 +39,15 @@ type Props = {
   onRun: (config: string, notes: string[]) => void;
   onCancel: () => void;
   onShowResults: () => void;
-  onGoTo: (screen: 'Team' | 'Rotation') => void;
+  onGoToSetup: () => void;
 };
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
 
 export default function RunScreen(props: Props) {
   const { state, source, built, config, onConfigChange, onRun, onCancel, onShowResults } = props;
-  const { iterations, onIterationsChange: setIterationChoice } = props;
+  const { iterations, onIterationsChange: setIterationChoice, settings } = props;
+  const set = (patch: Partial<SimSettings>) => props.onSettingsChange({ ...settings, ...patch });
   const [now, setNow] = useState(performance.now());
   const busy = state.phase === 'starting' || state.phase === 'running';
   const placeholder = isPlaceholderConfig(config);
@@ -56,38 +63,18 @@ export default function RunScreen(props: Props) {
 
   return (
     <>
-      <section className="card">
-        <h2>Simulation settings</h2>
-        <p className="label">Iterations</p>
-        <div className="choices" role="radiogroup" aria-label="Iterations">
-          {ITERATION_CHOICES.map((c) => (
-            <button
-              key={c.value}
-              role="radio"
-              aria-checked={iterations === c.value}
-              className={iterations === c.value ? 'choice selected' : 'choice'}
-              onClick={() => setIterationChoice(c.value)}
-              disabled={busy}
-            >
-              <strong>{c.label}</strong>
-              <span>{c.hint}</span>
-            </button>
-          ))}
-        </div>
-        <p className="muted small">Runs on {workerCount} workers in parallel on this device.</p>
-      </section>
-
+      {source === 'team' && props.switcher}
       <section className="card">
         <h2>What to run</h2>
         <Segmented
           label="Source"
           value={source}
           values={['team', 'paste'] as const}
-          names={{ team: 'Team + Rotation', paste: 'Paste a gcsim config' }}
+          names={{ team: 'Team from Setup', paste: 'Paste a gcsim config' }}
           onChange={props.onSourceChange}
         />
         {source === 'team' ? (
-          <TeamSource built={built} onGoTo={props.onGoTo} />
+          <TeamSource built={built} onGoToSetup={props.onGoToSetup} />
         ) : (
           <>
             {!config.trim() ? (
@@ -138,6 +125,57 @@ export default function RunScreen(props: Props) {
         )}
       </section>
 
+      {source === 'team' && (
+        <section className="card">
+          <h2>Fight settings</h2>
+          <div className="stat-grid">
+            <NumberField label="Fight length" suffix="s" value={settings.duration} onChange={(v) => set({ duration: v ?? 90 })} />
+            <NumberField label="Enemy level" suffix="" value={settings.enemyLevel} onChange={(v) => set({ enemyLevel: v ?? 100 })} />
+            <NumberField label="Enemy resistance" suffix="%" value={settings.enemyResist} onChange={(v) => set({ enemyResist: v ?? 10 })} />
+          </div>
+          <Segmented
+            label="Number of enemies"
+            value={settings.enemies}
+            values={Array.from({ length: MAX_ENEMIES }, (_, i) => i + 1)}
+            onChange={(enemies) => set({ enemies })}
+          />
+          {settings.enemies > 1 && (
+            <p className="muted small">
+              Extra enemies stand in a line beside the first, 4.1 m apart, so they don't overlap. Small area attacks may not
+              reach all of them.
+            </p>
+          )}
+        <label className="toggle">
+          <input type="checkbox" checked={settings.randomEnergy} onChange={(e) => set({ randomEnergy: e.target.checked })} />
+          <span>
+            Random energy particles
+            <span className="muted small"> (1 particle every 8 to 12 s, like enemies dropping energy)</span>
+          </span>
+        </label>
+      </section>
+      )}
+
+      <section className="card">
+        <h2>Simulation settings</h2>
+        <p className="label">Iterations</p>
+        <div className="choices" role="radiogroup" aria-label="Iterations">
+          {ITERATION_CHOICES.map((c) => (
+            <button
+              key={c.value}
+              role="radio"
+              aria-checked={iterations === c.value}
+              className={iterations === c.value ? 'choice selected' : 'choice'}
+              onClick={() => setIterationChoice(c.value)}
+              disabled={busy}
+            >
+              <strong>{c.label}</strong>
+              <span>{c.hint}</span>
+            </button>
+          ))}
+        </div>
+        <p className="muted small">Runs on {workerCount} workers in parallel on this device.</p>
+      </section>
+
       <section className="card">
         <label className="field">
           <span className="field-label">Name this run (optional)</span>
@@ -164,7 +202,7 @@ export default function RunScreen(props: Props) {
   );
 }
 
-function TeamSource({ built, onGoTo }: { built?: BuildResult; onGoTo: (screen: 'Team' | 'Rotation') => void }) {
+function TeamSource({ built, onGoToSetup }: { built?: BuildResult; onGoToSetup: () => void }) {
   if (!built) return <p className="muted">Loading game data…</p>;
   const turns = built.translation.turns.length;
   return (
@@ -178,20 +216,15 @@ function TeamSource({ built, onGoTo }: { built?: BuildResult; onGoTo: (screen: '
               </li>
             ))}
           </ul>
-          <div className="button-row">
-            <button className="secondary" onClick={() => onGoTo('Team')}>
-              Go to Team
-            </button>
-            <button className="secondary" onClick={() => onGoTo('Rotation')}>
-              Go to Rotation
-            </button>
-          </div>
+          <button className="secondary" onClick={onGoToSetup}>
+            Go to Setup
+          </button>
         </>
       ) : (
         <p className="small">
           Your team and a {turns}-turn rotation are ready.{' '}
-          <button className="link" onClick={() => onGoTo('Rotation')}>
-            Change the rotation or fight settings
+          <button className="link" onClick={onGoToSetup}>
+            Change the team or rotation
           </button>
         </p>
       )}

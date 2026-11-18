@@ -24,7 +24,7 @@ export type RunRecord = {
   /** The saved team and rotation the run was made from, if unchanged (used in its name). */
   teamName?: string;
   rotationLabel?: string;
-  /** Built from the Team and Rotation screens, or a pasted gcsim config. */
+  /** Built from the Setup screen, or a pasted gcsim config. */
   source: 'team' | 'paste';
   team?: Team;
   rotation?: RotationText;

@@ -14,7 +14,7 @@ type Props = {
   onCompare: (ids: string[]) => void;
   /** Opens the shared Import screen for a chosen file (runs, teams or a full backup). */
   onImportFile: (file: File) => void;
-  /** Puts a run's team, rotation and fight settings back on the Team and Rotation screens. */
+  /** Puts a run's team, rotation and fight settings back on the Setup and Run screens. */
   onLoad: (run: RunRecord) => void;
 };
 
