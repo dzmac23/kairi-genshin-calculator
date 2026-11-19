@@ -3,12 +3,14 @@
 export type SimSettings = {
   duration: number; // seconds
   enemyLevel: number;
-  enemyResist: number; // percent, 10 = 10%
+  enemyResist: number; // percent, 10 = 10% (training dummy only)
+  /** An enemy from data/enemies.json (gcsim's key), or null for a training dummy. */
+  enemy: string | null;
   enemies: number; // 1 to 5
   randomEnergy: boolean; // random elemental particles, as in the plan's sample
 };
 
-export const DEFAULT_SETTINGS: SimSettings = { duration: 90, enemyLevel: 100, enemyResist: 10, enemies: 1, randomEnergy: true };
+export const DEFAULT_SETTINGS: SimSettings = { duration: 90, enemyLevel: 100, enemyResist: 10, enemy: null, enemies: 1, randomEnergy: true };
 
 export const MAX_ENEMIES = 5;
 
@@ -30,6 +32,8 @@ export function cleanSettings(s: Partial<SimSettings>): SimSettings {
     duration: n(s.duration, DEFAULT_SETTINGS.duration, 1, 3600),
     enemyLevel: Math.round(n(s.enemyLevel, DEFAULT_SETTINGS.enemyLevel, 1, 200)),
     enemyResist: n(s.enemyResist, DEFAULT_SETTINGS.enemyResist, -100, 100),
+    // Settings saved before the enemy library have no enemy: a training dummy, as before.
+    enemy: typeof s.enemy === 'string' && s.enemy ? s.enemy : null,
     enemies: Math.round(n(s.enemies, DEFAULT_SETTINGS.enemies, 1, MAX_ENEMIES)),
     randomEnergy: typeof s.randomEnergy === 'boolean' ? s.randomEnergy : DEFAULT_SETTINGS.randomEnergy,
   };

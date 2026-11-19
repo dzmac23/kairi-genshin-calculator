@@ -81,7 +81,7 @@ export function compareDps(a: ResultsView, b: ResultsView): DpsComparison {
 }
 
 /** Fight settings that differ between the runs, as plain sentences. */
-export function fairnessCheck(a: RunRecord, b: RunRecord): string[] {
+export function fairnessCheck(a: RunRecord, b: RunRecord, enemyName: (key: string) => string = (k) => k): string[] {
   const sa = a.result as Settings;
   const sb = b.result as Settings;
   const out: string[] = [];
@@ -96,7 +96,12 @@ export function fairnessCheck(a: RunRecord, b: RunRecord): string[] {
   if (ta.length === tb.length && lvA !== lvB) out.push(`Enemy level differs: A is ${lvA}, B is ${lvB}.`);
   const resA = JSON.stringify(ta.map((t) => t.resist ?? {}));
   const resB = JSON.stringify(tb.map((t) => t.resist ?? {}));
-  if (ta.length === tb.length && resA !== resB) out.push('Enemy resistance differs.');
+  // Runs made from the Setup screen say which enemy they used; pasted configs only have resistances.
+  const ka = a.settings ? (a.settings.enemy ?? null) : undefined;
+  const kb = b.settings ? (b.settings.enemy ?? null) : undefined;
+  const label = (k: string | null) => (k ? enemyName(k) : 'a training dummy');
+  if (ka !== undefined && kb !== undefined && ka !== kb) out.push(`Enemy differs: A is ${label(ka)}, B is ${label(kb)}.`);
+  else if (ta.length === tb.length && resA !== resB) out.push('Enemy resistance differs.');
   const ea = sa.energy_settings?.active ?? false;
   const eb = sb.energy_settings?.active ?? false;
   if (ea !== eb) out.push(`Random energy is ${ea ? 'on' : 'off'} in A but ${eb ? 'on' : 'off'} in B.`);
@@ -160,7 +165,7 @@ export function inputChanges(a: RunRecord, b: RunRecord): string[] {
   return out;
 }
 
-export function compareRuns(a: RunRecord, b: RunRecord): Comparison {
+export function compareRuns(a: RunRecord, b: RunRecord, enemyName?: (key: string) => string): Comparison {
   const viewA = summarize(a.result as GcsimResult);
   const viewB = summarize(b.result as GcsimResult);
   const keysA = viewA.characters.map((c) => c.key);
@@ -221,7 +226,7 @@ export function compareRuns(a: RunRecord, b: RunRecord): Comparison {
         }
       : undefined;
 
-  return { dps: compareDps(viewA, viewB), fairness: fairnessCheck(a, b), sameTeam, changes: inputChanges(a, b), characters, sources, timeLost, timing, viewA, viewB };
+  return { dps: compareDps(viewA, viewB), fairness: fairnessCheck(a, b, enemyName), sameTeam, changes: inputChanges(a, b), characters, sources, timeLost, timing, viewA, viewB };
 }
 
 /** One line for the verdict, e.g. "B is clearly better: +4.2% (+5,712 DPS)". */

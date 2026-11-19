@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
+import Picker, { type PickerOption } from '../components/Picker';
+import { ENEMY_ELEMENTS, elementName, enemySummary, resistPercent, type Enemy } from '../data/gameData';
 import type { BuildResult } from '../config/build';
 import { MAX_ENEMIES, type SimSettings } from '../config/settings';
 import { setIterations } from '../engine/config';
@@ -25,6 +27,8 @@ type Props = {
   /** Fight settings (used for the Setup team; a pasted config has its own). */
   settings: SimSettings;
   onSettingsChange: (s: SimSettings) => void;
+  /** The enemy library (undefined while game data loads). */
+  enemies?: Enemy[];
   /** The "Now simulating" bar. */
   switcher?: ReactNode;
   /** A pasted gcsim config. Kept in App so it survives switching tabs. Empty by default. */
@@ -128,10 +132,13 @@ export default function RunScreen(props: Props) {
       {source === 'team' && (
         <section className="card">
           <h2>Fight settings</h2>
+          <EnemyChoice settings={settings} enemies={props.enemies} onChange={(enemy) => set({ enemy })} />
           <div className="stat-grid">
             <NumberField label="Fight length" suffix="s" value={settings.duration} onChange={(v) => set({ duration: v ?? 90 })} />
             <NumberField label="Enemy level" suffix="" value={settings.enemyLevel} onChange={(v) => set({ enemyLevel: v ?? 100 })} />
-            <NumberField label="Enemy resistance" suffix="%" value={settings.enemyResist} onChange={(v) => set({ enemyResist: v ?? 10 })} />
+            {!settings.enemy && (
+              <NumberField label="Enemy resistance" suffix="%" value={settings.enemyResist} onChange={(v) => set({ enemyResist: v ?? 10 })} />
+            )}
           </div>
           <Segmented
             label="Number of enemies"
@@ -142,7 +149,7 @@ export default function RunScreen(props: Props) {
           {settings.enemies > 1 && (
             <p className="muted small">
               Extra enemies stand in a line beside the first, 4.1 m apart, so they don't overlap. Small area attacks may not
-              reach all of them.
+              reach all of them.{settings.enemy ? ' All of them are the enemy chosen above.' : ''}
             </p>
           )}
         <label className="toggle">
@@ -198,6 +205,43 @@ export default function RunScreen(props: Props) {
         )}
         <Status state={state} now={now} onShowResults={onShowResults} />
       </section>
+    </>
+  );
+}
+
+const DUMMY = 'dummy';
+
+/** The enemy picker: a training dummy (one resistance for every element) or an enemy from gcsim's data. */
+function EnemyChoice({ settings, enemies, onChange }: { settings: SimSettings; enemies?: Enemy[]; onChange: (key: string | null) => void }) {
+  const options: PickerOption[] = useMemo(
+    () => [
+      { value: DUMMY, label: 'Training dummy', hint: 'the same resistance to every element, set below' },
+      ...(enemies ?? []).map((e) => ({ value: e.key, label: e.name, hint: enemySummary(e) })),
+    ],
+    [enemies],
+  );
+  const enemy = settings.enemy ? enemies?.find((e) => e.key === settings.enemy) : undefined;
+  return (
+    <>
+      <Picker label="Enemy" value={settings.enemy ?? DUMMY} options={options} onChange={(v) => onChange(v && v !== DUMMY ? v : null)} />
+      {enemy && (
+        <div className="enemy-card">
+          <ul className="resist-list" aria-label={`${enemy.name} resistances`}>
+            {ENEMY_ELEMENTS.map((el) => (
+              <li key={el} className={enemy.resist[el] >= 0.5 ? 'high' : enemy.resist[el] < 0.1 ? 'low' : ''}>
+                <span className="muted small">{elementName(el)}</span>
+                <strong>{resistPercent(enemy.resist[el])}</strong>
+              </li>
+            ))}
+          </ul>
+          <p className="small">{enemy.freezeResist >= 1 ? <span className="warn">Can't be frozen.</span> : <span className="muted">Can be frozen.</span>}</p>
+          <p className="muted small">
+            Uses the enemy's real resistances from gcsim's game data. Boss mechanics such as shields, phases where it can't
+            be hit, moving around or changing resistances aren't simulated.
+          </p>
+        </div>
+      )}
+      {settings.enemy && enemies && !enemy && <p className="warn small">"{settings.enemy}" isn't in this version's enemy list. Choose another enemy.</p>}
     </>
   );
 }
