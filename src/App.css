@@ -427,3 +427,13 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .totals-table th { white-space: normal; line-height: 1.2; }
 .totals-table td:first-child { padding-right: 0.3rem; }
 .totals-table .num { white-space: nowrap; padding-left: 0.3rem; padding-right: 0; }
+
+/* Level box with ascension stars */
+.level-row { display: flex; align-items: center; gap: 0.5rem; }
+.level-row input { width: 5rem; text-align: right; }
+.stars { display: flex; gap: 0.15rem; margin-top: 0.3rem; }
+.star { background: none; color: #ffffff40; padding: 0; min-height: 32px; min-width: 28px; font-size: 1.3rem; line-height: 1; border-radius: 6px; }
+.star:disabled { opacity: 1; cursor: default; }
+.star.lit { color: var(--gold); }
+.star.tappable { cursor: pointer; outline: 1px dashed #f2c45e88; outline-offset: -2px; }
+.level-field p { margin: 0.25rem 0 0; }

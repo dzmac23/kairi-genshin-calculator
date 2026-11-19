@@ -2,10 +2,11 @@
 // (main stats and substats together), in the units shown in game: percentages as percentages
 // (31.1 means 31.1%), flat ATK/HP/DEF/EM as numbers.
 
-import type { LevelKey } from '../data/gameData';
+import { parseLevel } from './level';
 
-export const CHARACTER_LEVELS: LevelKey[] = ['1', '20', '20+', '40', '40+', '50', '50+', '60', '60+', '70', '70+', '80', '80+', '90', '95', '100'];
-export const WEAPON_LEVELS: LevelKey[] = ['1', '20', '20+', '40', '40+', '50', '50+', '60', '60+', '70', '70+', '80', '80+', '90'];
+/** Highest levels: characters go to 100, weapons to 90. */
+export const MAX_CHARACTER_LEVEL = 100;
+export const MAX_WEAPON_LEVEL = 90;
 
 export type ArtifactStatKey = 'atk%' | 'atk' | 'hp%' | 'hp' | 'def%' | 'def' | 'em' | 'cr' | 'cd' | 'er' | 'elem%' | 'phys%';
 
@@ -67,11 +68,12 @@ export type SetChoice =
 
 export type Slot = {
   character: string | null; // display name from data/characters.json
-  level: LevelKey;
+  /** "81", "80" (80/80) or "80+" (80/90): see team/level.ts. */
+  level: string;
   constellation: number; // 0 to 6
   talents: [number, number, number]; // base levels 1 to 10: Normal Attack, Skill, Burst
   weapon: string | null;
-  weaponLevel: LevelKey;
+  weaponLevel: string;
   refinement: number; // 1 to 5
   sets: SetChoice;
   artifacts: Partial<Record<ArtifactStatKey, number>>;
@@ -129,18 +131,7 @@ export function emptyTeam(): Team {
   return [emptySlot(), emptySlot(), emptySlot(), emptySlot()];
 }
 
-/**
- * Level key to gcsim's level/max level: "80+" (ascended at 80) -> "80/90", "80" -> "80/80",
- * "95" -> "95/100", "1" -> "1/20", "90" -> "90/90", "100" -> "100/100".
- */
-export function levelToGcsim(level: LevelKey): string {
-  const caps = [20, 40, 50, 60, 70, 80, 90, 100];
-  const n = parseInt(level, 10);
-  if (level.endsWith('+')) return `${n}/${caps[caps.indexOf(n) + 1]}`;
-  if (n === 1) return '1/20';
-  if (n === 95) return '95/100';
-  return `${n}/${n}`;
-}
+export { levelToGcsim } from './level';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)));
@@ -153,7 +144,7 @@ export function cleanSlot(raw: unknown): Slot {
   const d = emptySlot();
   const s = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof Slot, unknown>>;
   const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
-  const level = (v: unknown, list: LevelKey[], fallback: LevelKey) => (list.includes(v as LevelKey) ? (v as LevelKey) : fallback);
+  const level = (v: unknown, max: number, fallback: string) => (typeof v === 'string' && parseLevel(v, max) ? v.trim() : fallback);
   const talents = Array.isArray(s.talents) && s.talents.length === 3 && s.talents.every(isNum) ? (s.talents.map((t) => clamp(t, 1, 15)) as Slot['talents']) : d.talents;
   const sets = s.sets as SetChoice | undefined;
   const cleanSets: SetChoice =
@@ -189,11 +180,11 @@ export function cleanSlot(raw: unknown): Slot {
   return {
     ...(s.statMode === 'totals' ? { statMode: 'totals' as const, totals, ...(baseline ? { baseline } : {}) } : {}),
     character: str(s.character),
-    level: level(s.level, CHARACTER_LEVELS, d.level),
+    level: level(s.level, MAX_CHARACTER_LEVEL, d.level),
     constellation: isNum(s.constellation) ? clamp(s.constellation, 0, 6) : d.constellation,
     talents,
     weapon: str(s.weapon),
-    weaponLevel: level(s.weaponLevel, WEAPON_LEVELS, d.weaponLevel),
+    weaponLevel: level(s.weaponLevel, MAX_WEAPON_LEVEL, d.weaponLevel),
     refinement: isNum(s.refinement) ? clamp(s.refinement, 1, 5) : d.refinement,
     sets: cleanSets,
     artifacts,
