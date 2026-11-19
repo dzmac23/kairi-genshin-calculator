@@ -9257,7 +9257,7 @@
   "rarity": 5,
   "version": "6.1",
   "ascension_stat": "CRIT DMG",
-  "gcsim_key": null,
+  "gcsim_key": "nefer",
   "c3_boosts": "Skill",
   "c5_boosts": "Burst",
   "stats": [
@@ -9373,7 +9373,8 @@
     "base_def": 856.1063264,
     "ascension_value_excl_base_crit": 0.384
    }
-  ]
+  ],
+  "gcsim_patch": "nefer"
  },
  {
   "name": "Neuvillette",

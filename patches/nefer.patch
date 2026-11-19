@@ -1,0 +1,2200 @@
+Nefer for gcsim, from an unmerged gcsim pull request, moved onto gcsim v2.50.0 (+ linnea.patch),
+plus fixes for the problems gcsim's tests and review found.
+
+Source: https://github.com/genshinsim/gcsim/pull/3045 ("Nefer try 2") by dersario, commits d833248
+        and 4932d0e (2026-09-20), based on an older gcsim (d6be803); replayed onto v2.50.0 with
+        linnea.patch applied, without conflicts. Apply after linnea.patch (patches apply in name order).
+Not reviewed or accepted by gcsim's maintainers: results are experimental.
+
+Left out: the website files (ui/).
+
+Verdant Dew: the pull request adds a general "Verdant Dew rate" hook to gcsim's player code. Only
+Nefer (her ascension passive and C4) uses it; without her, Dew generation is unchanged (checked with
+a Lunar-Bloom team: identical results with and without this patch).
+
+Fixes added by this project:
+  - Marked "incomplete" in gcsim (as linnea.patch does for Linnea), so every result with her shows
+    gcsim's "may not match the game exactly yet" warning.
+  - Plunge removed: it dealt damage but had no frames, so gcsim's ability test crashed, and its
+    timings were never counted. Plunging gives gcsim's usual "not implemented" error.
+  - Normal attack 4: the animation (51) was shorter than its measured walk cancel (63); now 63.
+  - Burst energy: ConsumeEnergy(60) drained energy 60 frames late (the argument is a delay, not an
+    amount). Her drain frame isn't counted; 4 frames, the delay gcsim uses most often.
+  - Burst damage bonus from Veil stacks: it lasted 90 frames and ended before both hits (104, 149),
+    so it never applied. It now lasts until the second hit (150 frames), as gcsim's review asked.
+  - Slither (held charged attack) no longer walks her towards the enemy (no other gcsim character
+    moves the player; the review asked for it). Seeds of Deceit appear around the enemy, inside her
+    6 m pickup radius.
+
+Known open points (not changed here): most of her kit hasn't been reviewed by gcsim yet; the Seeds
+of Deceit pickup radius (6 m) is the author's assumption; untested fixes proposed in review
+(Phantasm second hit after a cancel, C6 end hit) aren't included.
+
+This file is applied by scripts/build-gcsim.sh. When gcsim includes Nefer itself, the build skips
+it and says so; then delete this file.
+
+diff --git a/internal/characters/nefer/asc.go b/internal/characters/nefer/asc.go
+new file mode 100644
+index 00000000..378a5b6a
+--- /dev/null
++++ b/internal/characters/nefer/asc.go
+@@ -0,0 +1,60 @@
++package nefer
++
++import (
++	"math"
++
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/reactable"
++)
++
++const (
++	lunarbloomBonusKey = "nefer-lunarbloom-bonus"
++	p2DewWindowKey     = "nefer-p2-dew-window"
++	p2DewRateKey       = "nefer-p2-dew-rate"
++	p2DewWindowDur     = 5 * 60
++)
++
++func (c *char) p2Active() bool {
++	return c.Base.Ascension >= 4
++}
++
++func (c *char) p2DewRateBonus() float64 {
++	bonusSteps := math.Floor(max(c.Stat(attributes.EM)-500, 0) / 100)
++	return min(bonusSteps*0.1, 0.5)
++}
++
++func (c *char) p2Init() {
++	if !c.p2Active() {
++		return
++	}
++
++	c.Core.Player.AddVerdantDewRateMod(p2DewRateKey, -1, func() (float64, bool) {
++		if !c.StatusIsActive(shadowDanceKey) || !c.slitherActive() || !c.StatusIsActive(p2DewWindowKey) {
++			return 0, false
++		}
++		return c.p2DewRateBonus(), false
++	})
++
++	c.Core.Events.Subscribe(event.OnLunarBloom, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++		if atk.Info.ActorIndex < 0 || atk.Info.ActorIndex >= len(c.Core.Player.Chars()) {
++			return
++		}
++		c.AddStatus(p2DewWindowKey, p2DewWindowDur, true)
++	}, p2DewWindowKey)
++}
++
++func (c *char) lunarbloomInit() {
++	c.Core.Flags.Custom[reactable.LunarBloomEnableKey] = 1
++
++	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++		if atk.Info.AttackTag != attacks.AttackTagDirectLunarBloom {
++			return
++		}
++		atk.Info.BaseDmgBonus += min(c.Stat(attributes.EM)*0.000175, 0.14)
++	}, lunarbloomBonusKey)
++}
+diff --git a/internal/characters/nefer/attack.go b/internal/characters/nefer/attack.go
+new file mode 100644
+index 00000000..ad766fe9
+--- /dev/null
++++ b/internal/characters/nefer/attack.go
+@@ -0,0 +1,90 @@
++package nefer
++
++import (
++	"fmt"
++
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++const normalHitNum = 4
++
++func normalAttackCanQueueAfter(normalIndex int) int {
++	return attackFrames[normalIndex][action.ActionSkill]
++}
++
++var (
++	attackFrames   [][]int
++	attackHitmarks = []int{10, 8, 26, 22}
++	attackHitboxes = [][]float64{{2, 8}, {2, 8}, {2.5, 9}, {2.8, 8}}
++	attackOffsets  = []float64{0, 0, 0, -0.5}
++)
++
++func init() {
++	attackFrames = make([][]int, normalHitNum)
++
++	attackFrames[0] = frames.InitNormalCancelSlice(attackHitmarks[0], 40)
++	attackFrames[0][action.ActionAttack] = 15
++	attackFrames[0][action.ActionCharge] = 40
++	attackFrames[0][action.ActionWalk] = 33
++
++	attackFrames[1] = frames.InitNormalCancelSlice(attackHitmarks[1], 38)
++	attackFrames[1][action.ActionAttack] = 20
++	attackFrames[1][action.ActionCharge] = 38
++	attackFrames[1][action.ActionWalk] = 34
++
++	attackFrames[2] = frames.InitNormalCancelSlice(attackHitmarks[2], 62)
++	attackFrames[2][action.ActionAttack] = 49
++	attackFrames[2][action.ActionCharge] = 62
++	attackFrames[2][action.ActionWalk] = 50
++
++	attackFrames[3] = frames.InitNormalCancelSlice(attackHitmarks[3], 51)
++	attackFrames[3][action.ActionWalk] = 63
++	attackFrames[3][action.InvalidAction] = 63 // kairi: the animation can't end before the measured walk cancel (63)
++	attackFrames[3][action.ActionAttack] = 51
++}
++
++func (c *char) Attack(p map[string]int) (action.Info, error) {
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       fmt.Sprintf("Normal %v", c.NormalCounter+1),
++		AttackTag:  attacks.AttackTagNormal,
++		ICDTag:     attacks.ICDTagNormalAttack,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Dendro,
++		Durability: 25,
++		Mult:       attack[c.NormalCounter][c.TalentLvlAttack()],
++	}
++
++	cb := combat.NewBoxHit(
++		c.Core.Combat.Player(),
++		c.Core.Combat.PrimaryTarget(),
++		info.Point{Y: attackOffsets[c.NormalCounter]},
++		attackHitboxes[c.NormalCounter][0],
++		attackHitboxes[c.NormalCounter][1],
++	)
++
++	if c.NormalCounter == 2 {
++		c.Core.QueueAttack(ai, cb, 10, 10)
++		c.Core.QueueAttack(ai, cb, 26, 26)
++	} else {
++		c.Core.QueueAttack(ai, cb, attackHitmarks[c.NormalCounter], attackHitmarks[c.NormalCounter])
++	}
++
++	defer c.AdvanceNormalIndex()
++
++	return action.Info{
++		Frames:          frames.NewAttackFunc(c.Character, attackFrames),
++		AnimationLength: attackFrames[c.NormalCounter][action.InvalidAction],
++		CanQueueAfter:   normalAttackCanQueueAfter(c.NormalCounter),
++		State:           action.NormalAttackState,
++	}, nil
++}
++
++// kairi: the plunge was removed. It had no frames (gcsim's ability test crashed on it) and its
++// timings were never counted, so plunging gives gcsim's usual "not implemented" error instead.
+diff --git a/internal/characters/nefer/burst.go b/internal/characters/nefer/burst.go
+new file mode 100644
+index 00000000..8d672d83
+--- /dev/null
++++ b/internal/characters/nefer/burst.go
+@@ -0,0 +1,112 @@
++package nefer
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++)
++
++var burstFrames []int
++
++const neferBurstBonusKey = "nefer-burst-veil-bonus"
++
++const (
++	burstAttackCancelFrame         = 119
++	burstNormalChargeCancelFrame   = 131
++	burstPhantasmChargeCancelFrame = 124
++	burstSkillCancelFrame          = 119
++	burstDashCancelFrame           = 120
++	burstJumpCancelFrame           = 120
++	burstSwapCancelFrame           = 118
++	burstWalkCancelFrame           = 119
++	burstAnimationLength           = 131
++)
++
++func init() {
++	burstFrames = frames.InitAbilSlice(burstAnimationLength)
++	burstFrames[action.ActionAttack] = burstAttackCancelFrame
++	burstFrames[action.ActionSkill] = burstSkillCancelFrame
++	burstFrames[action.ActionDash] = burstDashCancelFrame
++	burstFrames[action.ActionJump] = burstJumpCancelFrame
++	burstFrames[action.ActionSwap] = burstSwapCancelFrame
++	burstFrames[action.ActionWalk] = burstWalkCancelFrame
++}
++
++func (c *char) Burst(p map[string]int) (action.Info, error) {
++	stacks := c.consumeVeilStacks()
++	bonus := 0.0
++	if stacks > 0 {
++		bonus = float64(stacks) * burst[4][c.TalentLvlBurst()]
++	}
++
++	if bonus > 0 {
++		m := make([]float64, attributes.EndStatType)
++		m[attributes.DmgP] = bonus
++		c.AddAttackMod(character.AttackMod{
++			// kairi: was 90 frames, which ended before both hits (104 and 149): last until the second hit.
++			Base: modifier.NewBase(neferBurstBonusKey, 149+1),
++			Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
++				if atk.Info.Abil != "Sacred Vow: True Eye's Phantasm (Hit 1)" && atk.Info.Abil != "Sacred Vow: True Eye's Phantasm (Hit 2)" {
++					return nil
++				}
++				return m
++			},
++		})
++	}
++
++	ai1 := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Sacred Vow: True Eye's Phantasm (Hit 1)",
++		AttackTag:  attacks.AttackTagElementalBurst,
++		ICDTag:     attacks.ICDTagElementalBurst,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Dendro,
++		Durability: 25,
++		Mult:       burst[0][c.TalentLvlBurst()],
++		FlatDmg:    c.Stat(attributes.EM) * burst[1][c.TalentLvlBurst()],
++	}
++	ai2 := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Sacred Vow: True Eye's Phantasm (Hit 2)",
++		AttackTag:  attacks.AttackTagElementalBurst,
++		ICDTag:     attacks.ICDTagElementalBurst,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Dendro,
++		Durability: 25,
++		Mult:       burst[2][c.TalentLvlBurst()],
++		FlatDmg:    c.Stat(attributes.EM) * burst[3][c.TalentLvlBurst()],
++	}
++
++	ap := combat.NewBoxHit(c.Core.Combat.Player(), c.Core.Combat.PrimaryTarget(), nil, 6, 10)
++	// The burst animation can be cancelled into a swap before the delayed
++	// second hit lands. Keep the hit tasks independent from the animation lock.
++	c.Core.QueueAttack(ai1, ap, 104, 104)
++	c.Core.QueueAttack(ai2, ap, 149, 149)
++
++	c.SetCD(action.ActionBurst, 15*60)
++	// kairi: the argument is a delay in frames, not an amount. Her drain frame isn't counted; 4 is
++	// the delay gcsim uses most often.
++	c.ConsumeEnergy(4)
++
++	return action.Info{
++		Frames: func(next action.Action) int {
++			if next == action.ActionCharge {
++				if c.canTriggerPhantasm() {
++					return burstPhantasmChargeCancelFrame
++				}
++				return burstNormalChargeCancelFrame
++			}
++			return burstFrames[next]
++		},
++		AnimationLength: burstFrames[action.InvalidAction],
++		CanQueueAfter:   burstFrames[action.ActionSwap],
++		State:           action.BurstState,
++	}, nil
++}
+diff --git a/internal/characters/nefer/charge.go b/internal/characters/nefer/charge.go
+new file mode 100644
+index 00000000..0531a469
+--- /dev/null
++++ b/internal/characters/nefer/charge.go
+@@ -0,0 +1,430 @@
++package nefer
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/glog"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++const (
++	basicChargeWindup       = 20
++	basicChargeHitmark      = 44
++	slitherMaxDuration      = 150
++	slitherActivationFrames = 60
++	slitherMinCancelFrames  = 24
++	slitherMoveInterval     = 1
++	slitherMoveDistance     = 0.1
++	slitherStamInterval     = 1
++	slitherStamTickCost     = 18.15 / 60.0
++	phantasmAnimationLength = 106
++	phantasmConsumeDewFrame = 9
++	phantasmHit1            = 10
++	phantasmHit2            = 15
++	phantasmHit3            = 23
++	phantasmHit4            = 24
++	phantasmHit5            = 25
++	c6PhantasmHit2EM        = 0.85
++	c6PhantasmEndEM         = 1.20
++)
++
++var chargeFrames []int
++
++func basicChargeCanQueueAfter() int {
++	return min(chargeFrames[action.ActionAttack], chargeFrames[action.ActionSwap])
++}
++
++func init() {
++	chargeFrames = frames.InitAbilSlice(72)
++	chargeFrames[action.ActionAttack] = 29
++	chargeFrames[action.ActionSkill] = 48
++	chargeFrames[action.ActionBurst] = 48
++	chargeFrames[action.ActionDash] = 48
++	chargeFrames[action.ActionJump] = 48
++	chargeFrames[action.ActionSwap] = 28
++	chargeFrames[action.ActionWalk] = 71
++}
++
++func (c *char) ActionStam(a action.Action, p map[string]int) float64 {
++	if a != action.ActionCharge {
++		return c.Character.ActionStam(a, p)
++	}
++	if c.canTriggerPhantasm() {
++		return 0
++	}
++	return slitherStamTickCost * slitherActivationFrames
++}
++
++// ChargeAttack uses `hold` as an explicit hold duration in frames.
++//
++// Route split:
++//   - hold=0: tap. If Phantasm is already available, execute the direct Phantasm CA.
++//     Otherwise execute the no-hold ordinary CA route.
++//   - hold>0: hold for exactly that many frames, capped to 150. If Phantasm is
++//     already available, the result is identical to tap. Otherwise enter Slither
++//     first. Slither then resolves into either Phantasm CA as soon as the Phantasm
++//     condition becomes true or ordinary CA when the hold route ends.
++//
++// Ordinary CA is modeled as the no-hold Slither-release path. Workbook ordinary
++// CA rows are currently interpreted as button-to-button timings for that full
++// route rather than as release-only timings after a separate CA windup. The
++// branch does not yet know how many of those frames belong to the embedded
++// Slither-entry segment, so it currently assumes that contribution is 0f.
++//
++// The shared player ReadyCheck therefore gates non-Phantasm charge startup on
++// the Slither-entry threshold: if there is not enough stamina to enter Slither,
++// the ordinary CA route never begins.
++func (c *char) ChargeAttack(p map[string]int) (action.Info, error) {
++	if p["hold"] != 0 {
++		return c.heldChargeAttack(p)
++	}
++	if c.canTriggerPhantasm() {
++		return c.tapPhantasmChargeAttack()
++	}
++	c.Core.Player.RestoreStam(c.Core.Player.AbilStamCost(c.Index(), action.ActionCharge, p))
++	c.clearPhantasmChargeLoop()
++	return c.basicChargeAttack()
++}
++
++func heldChargeDuration(p map[string]int) int {
++	return min(max(p["hold"], 1), slitherMaxDuration)
++}
++
++func (c *char) tapPhantasmChargeAttack() (action.Info, error) {
++	c.clearPhantasmChargeLoop()
++	src := c.Core.F
++	c.chargeRoute.src = src
++	c.QueueCharTask(func() {
++		c.startPhantasmPhase(src)
++	}, basicChargeWindup)
++
++	return action.Info{
++		Frames: func(next action.Action) int {
++			switch next {
++			case action.ActionBurst, action.ActionDash:
++				return basicChargeWindup + phantasmHit1
++			default:
++				return basicChargeWindup + phantasmAnimationLength
++			}
++		},
++		AnimationLength: basicChargeWindup + phantasmAnimationLength,
++		CanQueueAfter:   1,
++		State:           action.ChargeAttackState,
++		OnRemoved: func(next action.AnimationState) {
++			if c.chargeRoute.src != src {
++				return
++			}
++			c.clearPhantasmChargeLoop()
++		},
++	}, nil
++}
++
++func (c *char) heldChargeAttack(p map[string]int) (action.Info, error) {
++	// If Phantasm is already available, hold and tap intentionally collapse to the
++	// same direct Phantasm route. The only difference between tap and hold is the
++	// Slither prefix used while waiting for either Phantasm or the ordinary release.
++	if c.canTriggerPhantasm() {
++		return c.tapPhantasmChargeAttack()
++	}
++
++	c.Core.Player.RestoreStam(c.Core.Player.AbilStamCost(c.Index(), action.ActionCharge, p))
++	c.clearPhantasmChargeLoop()
++	src := c.Core.F
++	windup := basicChargeWindup
++	slitherDuration := heldChargeDuration(p)
++	c.chargeRoute.src = src
++	c.QueueCharTask(func() {
++		if c.chargeRouteInterrupted(src) {
++			return
++		}
++		c.startSlitherPhase(src)
++	}, windup)
++	c.QueueCharTask(func() {
++		c.finishHeldCharge(src)
++	}, windup+slitherDuration)
++
++	return action.Info{
++		Frames: func(next action.Action) int {
++			if c.phantasmActive() {
++				phaseStartOffset := c.chargeRoute.phantasmStartFrame - src
++				switch next {
++				case action.ActionBurst, action.ActionDash:
++					return phaseStartOffset + phantasmHit1
++				default:
++					return phaseStartOffset + phantasmAnimationLength
++				}
++			}
++			if c.chargeRoute.releaseStartFrame > 0 {
++				phaseStartOffset := c.chargeRoute.releaseStartFrame - src
++				return phaseStartOffset + chargeFrames[next]
++			}
++			switch next {
++			case action.ActionBurst, action.ActionDash:
++				return windup + slitherMinCancelFrames
++			case action.ActionCharge:
++				return windup + slitherDuration + chargeFrames[next]
++			default:
++				return windup + slitherDuration + chargeFrames[action.InvalidAction]
++			}
++		},
++		AnimationLength: windup + slitherDuration + chargeFrames[action.InvalidAction],
++		CanQueueAfter:   1,
++		State:           action.ChargeAttackState,
++		OnRemoved: func(next action.AnimationState) {
++			if next != action.ChargeAttackState {
++				c.clearPhantasmChargeLoop()
++			}
++		},
++	}, nil
++}
++
++func (c *char) startSlitherPhase(src int) {
++	if !c.chargeRouteActive(src) {
++		return
++	}
++	if c.slitherActive() {
++		return
++	}
++	c.AddStatus(slitherKey, -1, false)
++	c.chargeRoute.slitherSrc = src
++	c.QueueCharTask(c.slitherTickTask(src), 0)
++}
++
++func (c *char) slitherTickTask(src int) func() {
++	return func() {
++		if c.slitherLoopInterrupted(src) {
++			return
++		}
++		if c.canTriggerPhantasm() {
++			c.triggerPhantasmFromLoop(src)
++			return
++		}
++		if c.phantasmActive() {
++			c.clearSlither()
++			return
++		}
++
++		req := slitherStamTickCost * (1 + c.Core.Player.StamPercentMod(action.ActionCharge))
++		if req < 0 {
++			req = 0
++		}
++		if c.Core.Player.Stam < req {
++			c.clearSlither()
++			return
++		}
++
++		player := c.Core.Combat.Player()
++		target := c.Core.Combat.PrimaryTarget()
++		if target != nil {
++			player.SetDirection(target.Pos())
++		}
++		// kairi: no longer moves the player (no other gcsim character does, and gcsim's review asked
++		// for it to be removed). Seeds of Deceit appear around the enemy, within her 6 m pickup radius.
++		c.Core.Player.UseStam(req, action.ActionWait)
++		c.absorbSeedsOfDeceit()
++		c.QueueCharTask(c.slitherTickTask(src), max(slitherMoveInterval, slitherStamInterval))
++	}
++}
++
++// finishHeldCharge resolves the non-Phantasm hold path into the same ordinary
++// CA release used by the tap route. At this point the only difference from an
++// immediate ordinary CA is the Slither prefix that already happened.
++func (c *char) finishHeldCharge(src int) {
++	if c.chargeRouteInterrupted(src) || c.phantasmActive() || c.chargeRoute.releaseStartFrame > 0 {
++		return
++	}
++	c.clearSlither()
++	c.startBasicChargeRelease(src)
++}
++
++func (c *char) triggerPhantasmFromLoop(src int) {
++	if !c.chargeRouteActive(src) || !c.canTriggerPhantasm() {
++		return
++	}
++
++	c.clearSlither()
++	c.startPhantasmPhase(src)
++}
++
++func (c *char) startPhantasmPhase(src int) {
++	if c.chargeRoute.src != src || !c.canTriggerPhantasm() {
++		return
++	}
++	c.phantasmCharges--
++	c.chargeRoute.phantasmStartFrame = c.Core.F
++	c.chargeRoute.phantasmEndFrame = c.Core.F + phantasmAnimationLength
++	c.queuePhantasmPerformance(src)
++	c.QueueCharTask(func() {
++		if c.chargeRoute.src != src {
++			return
++		}
++		c.chargeRoute.phantasmStartFrame = 0
++		c.chargeRoute.phantasmEndFrame = 0
++	}, phantasmAnimationLength)
++}
++
++func (c *char) startBasicChargeRelease(src int) {
++	if c.chargeRoute.src != src {
++		return
++	}
++	c.chargeRoute.releaseStartFrame = c.Core.F
++	c.queueBasicChargeRelease()
++}
++
++func (c *char) basicChargeAttack() (action.Info, error) {
++	c.clearPhantasmChargeLoop()
++	c.queueBasicChargeRelease()
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(chargeFrames),
++		AnimationLength: chargeFrames[action.InvalidAction],
++		CanQueueAfter:   basicChargeCanQueueAfter(),
++		State:           action.ChargeAttackState,
++	}, nil
++}
++
++func (c *char) queueBasicChargeRelease() {
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Charge Attack",
++		AttackTag:  attacks.AttackTagExtra,
++		ICDTag:     attacks.ICDTagNone,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Dendro,
++		Durability: 25,
++		Mult:       charge[c.TalentLvlAttack()],
++	}
++
++	c.Core.QueueAttack(
++		ai,
++		combat.NewBoxHit(c.Core.Combat.Player(), c.Core.Combat.PrimaryTarget(), info.Point{Y: -2}, 3, 9),
++		basicChargeHitmark,
++		basicChargeHitmark,
++	)
++	c.QueueCharTask(c.absorbSeedsOfDeceit, basicChargeHitmark)
++}
++
++func (c *char) queuePhantasmPerformance(src int) {
++	consumeFrame := phantasmConsumeDewFrame
++	c.QueueCharTask(func() {
++		if c.chargeRoute.src != src {
++			return
++		}
++		c.Core.Player.ConsumeDew(1)
++		c.absorbSeedsOfDeceit()
++	}, consumeFrame)
++
++	shadeScaleBonus := c.c1ShadeScaleBonus()
++
++	neferHit1 := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Phantasm Performance (Nefer 1)",
++		AttackTag:  attacks.AttackTagExtra,
++		ICDTag:     attacks.ICDTagNone,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Dendro,
++		Durability: 25,
++		Mult:       phantasm[0][c.TalentLvlSkill()],
++		FlatDmg:    c.Stat(attributes.EM) * phantasm[1][c.TalentLvlSkill()],
++	}
++	neferHit2 := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Phantasm Performance (Nefer 2)",
++		AttackTag:  attacks.AttackTagExtra,
++		ICDTag:     attacks.ICDTagNone,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Dendro,
++		Durability: 25,
++		Mult:       phantasm[2][c.TalentLvlSkill()],
++		FlatDmg:    c.Stat(attributes.EM) * phantasm[3][c.TalentLvlSkill()],
++	}
++	if c.Base.Cons >= 6 {
++		neferHit2.AttackTag = attacks.AttackTagDirectLunarBloom
++		neferHit2.Durability = 0
++		neferHit2.UseEM = true
++		neferHit2.IgnoreDefPercent = 1
++		neferHit2.Mult = c6PhantasmHit2EM
++		neferHit2.FlatDmg = 0
++	}
++	shadeHit1 := info.AttackInfo{
++		ActorIndex:       c.Index(),
++		Abil:             "Phantasm Performance (Shade 1)",
++		AttackTag:        attacks.AttackTagDirectLunarBloom,
++		ICDTag:           attacks.ICDTagNone,
++		ICDGroup:         attacks.ICDGroupDefault,
++		StrikeType:       attacks.StrikeTypeDefault,
++		Element:          attributes.Dendro,
++		UseEM:            true,
++		IgnoreDefPercent: 1,
++		Mult:             phantasm[4][c.TalentLvlSkill()] + shadeScaleBonus,
++	}
++	shadeHit2 := shadeHit1
++	shadeHit2.Abil = "Phantasm Performance (Shade 2)"
++	shadeHit2.Mult = phantasm[5][c.TalentLvlSkill()] + shadeScaleBonus
++	shadeHit3 := shadeHit1
++	shadeHit3.Abil = "Phantasm Performance (Shade 3)"
++	shadeHit3.Mult = phantasm[6][c.TalentLvlSkill()] + shadeScaleBonus
++
++	ap := combat.NewCircleHitOnTarget(c.Core.Combat.Player(), nil, 5)
++	c.queuePhantasmHit(src, neferHit1, ap, phantasmHit1, true)
++	c.queuePhantasmHit(src, shadeHit1, ap, phantasmHit2, false)
++	c.queuePhantasmHit(src, shadeHit2, ap, phantasmHit3, false)
++	c.queuePhantasmHit(src, neferHit2, ap, phantasmHit4, false)
++	c.queuePhantasmHit(src, shadeHit3, ap, phantasmHit5, false)
++	if c.Base.Cons >= 6 {
++		c6EndHit := info.AttackInfo{
++			ActorIndex:       c.Index(),
++			Abil:             "Phantasm Performance (C6 End Hit)",
++			AttackTag:        attacks.AttackTagDirectLunarBloom,
++			ICDTag:           attacks.ICDTagNone,
++			ICDGroup:         attacks.ICDGroupDefault,
++			StrikeType:       attacks.StrikeTypeDefault,
++			Element:          attributes.Dendro,
++			UseEM:            true,
++			IgnoreDefPercent: 1,
++			Mult:             c6PhantasmEndEM,
++		}
++		c.queuePhantasmHit(src, c6EndHit, ap, phantasmAnimationLength, false)
++	}
++}
++
++func (c *char) queuePhantasmHit(
++	src int,
++	ai info.AttackInfo,
++	ap info.AttackPattern,
++	delay int,
++	first bool,
++) {
++	c.QueueCharTask(func() {
++		if first {
++			if !c.chargeRouteActive(src) {
++				return
++			}
++			c.phantasmCommitSrc = src
++			c.phantasmVeilMultiplier = 1 + c.phantasmVeilBonus()
++			if c.Core.Flags.LogDebug {
++				c.Core.Log.NewEvent("nefer phantasm veil snapshot", glog.LogCharacterEvent, c.Index()).
++					Write("ability", ai.Abil).
++					Write("stacks", c.currentVeilStacks()).
++					Write("bonus", c.phantasmVeilMultiplier-1).
++					Write("multiplier", c.phantasmVeilMultiplier)
++			}
++		} else if c.phantasmCommitSrc != src {
++			return
++		}
++		ai.Mult *= c.phantasmVeilMultiplier
++		ai.FlatDmg *= c.phantasmVeilMultiplier
++		c.Core.QueueAttackEvent(&info.AttackEvent{
++			Info:        ai,
++			Pattern:     ap,
++			Snapshot:    c.Snapshot(&ai),
++			SourceFrame: src,
++		}, 0)
++	}, delay)
++}
+diff --git a/internal/characters/nefer/config.yml b/internal/characters/nefer/config.yml
+new file mode 100644
+index 00000000..9622e698
+--- /dev/null
++++ b/internal/characters/nefer/config.yml
+@@ -0,0 +1,106 @@
++use: pipeline
++kind: character
++name: nefer
++
++talents:
++  - attack:
++      - attack(1-Hit DMG)
++      - attack(2-Hit DMG)
++      - attack(3-Hit DMG)
++      - attack(4-Hit DMG)
++  - charge: attack(Charged Attack DMG)
++  - collision: attack(Plunge DMG)
++  - low: attack(Low/High Plunge DMG)
++  - high: attack(Low/High Plunge DMG|1)
++
++  - skill:
++      - skill(Skill DMG)
++      - skill(Skill DMG|1)
++  - phantasm:
++      - skill(Phantasm Performance 1-Hit DMG (Nefer))
++      - skill(Phantasm Performance 1-Hit DMG (Nefer)|1)
++      - skill(Phantasm Performance 2-Hit DMG (Nefer))
++      - skill(Phantasm Performance 2-Hit DMG (Nefer)|1)
++      - skill(Phantasm Performance 1-Hit DMG (Shades))
++      - skill(Phantasm Performance 2-Hit DMG (Shades))
++      - skill(Phantasm Performance 3-Hit DMG (Shades))
++  - burst:
++      - burst(1-Hit DMG)
++      - burst(1-Hit DMG|1)
++      - burst(2-Hit DMG)
++      - burst(2-Hit DMG|1)
++      - burst(DMG Bonus)
++
++docs:
++  fields:
++    .nefer.veilStacks: Current number of Veil of Falsehood stacks.
++    .nefer.phantasmCharges: Current number of Phantasm charges.
++  frames:
++    - count: https://docs.google.com/spreadsheets/d/1VpqRMv7FHPayKm9PBbazJs6gL2pr4Ka2F-EI0VgkpDQ/edit?gid=0#gid=0
++      count_credit: caramielle
++      video: https://youtu.be/QeYtpxgiZeo
++      video_credit: caramielle
++
++abilities:
++  - name: attack
++    hitbox:
++      - name: N1
++        shape: Circle
++        center: Player
++        radius: 2
++      - name: N2
++        shape: Circle
++        center: Player
++        radius: 2
++      - name: N3-1
++        shape: Circle
++        center: Player
++        radius: 2
++      - name: N3-2
++        shape: Circle
++        center: Player
++        radius: 2
++      - name: N4
++        shape: Circle
++        center: Player
++        radius: 2
++
++  - name: charge
++    hitbox:
++      - name: CA
++        shape: Circle
++        center: PrimaryTarget
++        radius: 2
++
++  - name: skill
++    hitbox:
++      - name: E-Skill
++        shape: Circle
++        center: Player
++        radius: 4
++      - name: E-Phantasm-Nefer
++        shape: Circle
++        center: PrimaryTarget
++        radius: 3
++      - name: E-Phantasm-Shade
++        shape: Circle
++        center: PrimaryTarget
++        radius: 3
++
++  - name: burst
++    hitbox:
++      - name: Q-Hit1
++        shape: Circle
++        center: Player
++        radius: 5
++      - name: Q-Hit2
++        shape: Circle
++        center: Player
++        radius: 5
++
++  - name: cons
++    hitbox:
++      - name: C2
++        shape: Circle
++        center: PrimaryTarget
++        radius: 3
+diff --git a/internal/characters/nefer/cons.go b/internal/characters/nefer/cons.go
+new file mode 100644
+index 00000000..0bd0f26f
+--- /dev/null
++++ b/internal/characters/nefer/cons.go
+@@ -0,0 +1,87 @@
++package nefer
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++)
++
++const (
++	c1BaseShadeScaleBonus = 0.6
++	c4VerdantDewRateKey   = "nefer-c4-verdant-dew-rate"
++	c4ResShredKey         = "nefer-c4-res-shred"
++	c4NearbyRadius        = 10
++	c4ResShredLinger      = 270
++)
++
++func c1ShadeScaleBonus(cons int) float64 {
++	if cons < 1 {
++		return 0
++	}
++	return c1BaseShadeScaleBonus
++}
++
++func (c *char) c1ShadeScaleBonus() float64 {
++	return c1ShadeScaleBonus(c.Base.Cons)
++}
++
++func (c *char) c6Init() {
++	if c.Base.Cons < 6 {
++		return
++	}
++	if !c.ascendantGleam {
++		return
++	}
++
++	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++		if atk.Info.ActorIndex != c.Index() {
++			return
++		}
++		if atk.Info.AttackTag != attacks.AttackTagDirectLunarBloom {
++			return
++		}
++		atk.Info.Elevation += 0.15
++	}, "nefer-c6-elevation")
++}
++
++func (c *char) c4Init() {
++	if c.Base.Cons < 4 {
++		return
++	}
++
++	c.Core.Player.AddVerdantDewRateMod(c4VerdantDewRateKey, -1, func() (float64, bool) {
++		if c.Core.Player.Active() != c.Index() || !c.StatusIsActive(shadowDanceKey) {
++			return 0, false
++		}
++		return 0.25, false
++	})
++
++	c.Core.Events.Subscribe(event.OnTick, func(args ...any) {
++		if c.Core.Player.Active() != c.Index() || !c.StatusIsActive(shadowDanceKey) {
++			return
++		}
++
++		playerPos := c.Core.Combat.Player().Pos()
++		for _, target := range c.Core.Combat.Enemies() {
++			enemy, ok := target.(info.Enemy)
++			if !ok || !target.IsAlive() {
++				continue
++			}
++			radius := 0.0
++			if circle, ok := target.Shape().(*info.Circle); ok {
++				radius = circle.Radius()
++			}
++			if playerPos.Distance(target.Pos()) > c4NearbyRadius+radius {
++				continue
++			}
++			enemy.AddResistMod(info.ResistMod{
++				Base:  modifier.NewBaseWithHitlag(c4ResShredKey, c4ResShredLinger),
++				Ele:   attributes.Dendro,
++				Value: -0.2,
++			})
++		}
++	}, c4ResShredKey)
++}
+diff --git a/internal/characters/nefer/nefer.go b/internal/characters/nefer/nefer.go
+new file mode 100644
+index 00000000..2fb8c958
+--- /dev/null
++++ b/internal/characters/nefer/nefer.go
+@@ -0,0 +1,228 @@
++package nefer
++
++import (
++	tmpl "github.com/genshinsim/gcsim/internal/template/character"
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/glog"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/core/stacks"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++)
++
++const (
++	shadowDanceKey          = "nefer-shadow-dance"
++	slitherKey              = "nefer-slither"
++	seedWindowKey           = "nefer-seed-window"
++	veilEMBuffKey           = "nefer-veil-em-buff"
++	seedAbsorbRadius        = 6
++	veilBaseDuration        = 9 * 60
++	c2VeilDurationBonus     = 5 * 60
++	phantasmChargesPerSkill = 3
++)
++
++type char struct {
++	*tmpl.Character
++	ascendantGleam         bool
++	veilstacks             int
++	veilTracker            *stacks.MultipleRefreshNoRemove
++	maxVeilStacks          int
++	phantasmCharges        int
++	phantasmCommitSrc      int
++	phantasmVeilMultiplier float64
++	chargeRoute            chargeRouteState
++}
++
++type chargeRouteState struct {
++	src                int
++	slitherSrc         int
++	releaseStartFrame  int
++	phantasmStartFrame int
++	phantasmEndFrame   int
++}
++
++func NewChar(s *core.Core, w *character.CharWrapper, _ info.CharacterProfile) error {
++	c := char{}
++	c.Character = tmpl.NewWithWrapper(s, w)
++
++	c.EnergyMax = 60
++	c.NormalHitNum = normalHitNum
++	c.SkillCon = 3
++	c.BurstCon = 5
++	c.Moonsign = 1
++	c.SetNumCharges(action.ActionSkill, 2)
++	c.maxVeilStacks = 3
++
++	w.Character = &c
++	return nil
++}
++
++func (c *char) Init() error {
++	c.ascendantGleam = c.Core.Player.GetMoonsignLevel() >= 2
++	if c.Base.Cons >= 2 {
++		c.maxVeilStacks = 5
++	}
++	c.initVeilTracker()
++	c.swapResetInit()
++	c.lunarbloomInit()
++	c.p1Init()
++	c.p2Init()
++	c.c4Init()
++	c.c6Init()
++	return nil
++}
++
++func (c *char) slitherActive() bool {
++	return c.StatusIsActive(slitherKey)
++}
++
++func (c *char) hasPhantasmCharge() bool {
++	return c.phantasmCharges > 0
++}
++
++func (c *char) canTriggerPhantasm() bool {
++	return c.StatusIsActive(shadowDanceKey) && c.hasPhantasmCharge() && c.Core.Player.Dew() > 0
++}
++
++func (c *char) phantasmActive() bool {
++	return c.chargeRoute.phantasmEndFrame > c.Core.F
++}
++
++func (c *char) chargeRouteActive(src int) bool {
++	return c.chargeRoute.src == src && c.Core.Player.Active() == c.Index() && c.Core.Player.CurrentState() == action.ChargeAttackState
++}
++
++func (c *char) chargeRouteInterrupted(src int) bool {
++	if c.chargeRouteActive(src) {
++		return false
++	}
++	c.clearPhantasmChargeLoop()
++	return true
++}
++
++func (c *char) slitherLoopInterrupted(src int) bool {
++	if c.chargeRouteInterrupted(src) {
++		return true
++	}
++	return c.chargeRoute.slitherSrc != src || !c.slitherActive()
++}
++
++func (c *char) clearSlither() {
++	c.DeleteStatus(slitherKey)
++	c.chargeRoute.slitherSrc = 0
++}
++
++func (c *char) clearPhantasmChargeLoop() {
++	c.clearSlither()
++	c.chargeRoute = chargeRouteState{}
++}
++
++func (c *char) swapResetInit() {
++	c.Core.Events.Subscribe(event.OnCharacterSwap, func(args ...any) {
++		prev := args[0].(int)
++		if prev != c.Index() {
++			return
++		}
++		c.clearPhantasmChargeLoop()
++		c.DeleteStatus(shadowDanceKey)
++		c.phantasmCharges = 0
++	}, "nefer-swap-reset")
++}
++
++func (c *char) AnimationStartDelay(k info.AnimationDelayKey) int {
++	switch k {
++	case info.AnimationYelanN0StartDelay:
++		return 10
++	default:
++		return c.Character.AnimationStartDelay(k)
++	}
++}
++
++func (c *char) addVeilStacks(count int) {
++	if count <= 0 {
++		return
++	}
++	prev := c.currentVeilStacks()
++	for range count {
++		duration := c.veilStackDuration()
++		c.veilTracker.Add(duration)
++		next := c.currentVeilStacks()
++		c.applyVeilThresholdBuff(prev, next, 1)
++		if c.Core.Flags.LogDebug {
++			c.Core.Log.NewEvent("nefer veil gained", glog.LogCharacterEvent, c.Index()).
++				Write("stacks_added", 1).
++				Write("stacks", next).
++				Write("bonus", float64(next)*0.08).
++				Write("duration_frames", duration).
++				Write("expires_frame", c.Core.F+duration)
++		}
++		prev = next
++	}
++}
++
++func (c *char) consumeVeilStacks() int {
++	count := c.currentVeilStacks()
++	c.initVeilTracker()
++	return count
++}
++
++func (c *char) phantasmVeilBonus() float64 {
++	stacks := c.currentVeilStacks()
++	if stacks <= 0 {
++		return 0
++	}
++	return float64(stacks) * 0.08
++}
++
++func (c *char) initVeilTracker() {
++	c.veilTracker = stacks.NewMultipleRefreshNoRemove(c.maxVeilStacks, c.QueueCharTask, &c.Core.F)
++	c.veilstacks = 0
++}
++
++func (c *char) currentVeilStacks() int {
++	if c.veilTracker == nil {
++		return c.veilstacks
++	}
++	c.veilstacks = c.veilTracker.Count()
++	return c.veilstacks
++}
++
++func (c *char) veilStackDuration() int {
++	dur := veilBaseDuration
++	if c.Base.Cons >= 2 {
++		dur += c2VeilDurationBonus
++	}
++	return dur
++}
++
++func (c *char) applyVeilThresholdBuff(prev, next, count int) {
++	if count <= 0 {
++		return
++	}
++
++	triggerFive := c.Base.Cons >= 2 && next >= 5 && (prev < 5 || prev == 5)
++	triggerThree := next >= 3 && (prev < 3 || prev == 3)
++
++	amount := 0.0
++	if triggerFive {
++		amount = 200
++	} else if triggerThree {
++		amount = 100
++	}
++	if amount <= 0 {
++		return
++	}
++
++	buff := make([]float64, attributes.EndStatType)
++	buff[attributes.EM] = amount
++	c.AddStatMod(character.StatMod{
++		Base:         modifier.NewBaseWithHitlag(veilEMBuffKey, 8*60),
++		AffectedStat: attributes.EM,
++		Amount: func() []float64 {
++			return buff
++		},
++	})
++}
+diff --git a/internal/characters/nefer/seed_gadget.go b/internal/characters/nefer/seed_gadget.go
+new file mode 100644
+index 00000000..f12c28f6
+--- /dev/null
++++ b/internal/characters/nefer/seed_gadget.go
+@@ -0,0 +1,26 @@
++package nefer
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/gadget"
++)
++
++const seedDuration = 12 * 60
++
++type seedGadget struct {
++	*gadget.Gadget
++}
++
++func newSeedGadget(c *core.Core, pos info.Point) *seedGadget {
++	g := &seedGadget{}
++	g.Gadget = gadget.New(c, pos, 2, info.GadgetTypDendroCore)
++	g.Duration = seedDuration
++	return g
++}
++
++func (g *seedGadget) HandleAttack(atk *info.AttackEvent) float64 {
++	g.Core.Events.Emit(event.OnGadgetHit, g, atk)
++	return 0
++}
+diff --git a/internal/characters/nefer/seeds.go b/internal/characters/nefer/seeds.go
+new file mode 100644
+index 00000000..b5c26efa
+--- /dev/null
++++ b/internal/characters/nefer/seeds.go
+@@ -0,0 +1,90 @@
++package nefer
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/glog"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++func (c *char) p1Active() bool {
++	return c.Base.Ascension >= 1 && c.ascendantGleam
++}
++
++func (c *char) p1Init() {
++	if !c.p1Active() {
++		return
++	}
++
++	c.Core.Events.Subscribe(event.OnDendroCore, func(args ...any) {
++		if !c.StatusIsActive(seedWindowKey) {
++			return
++		}
++
++		core, ok := args[0].(info.Gadget)
++		if !ok || core.GadgetTyp() != info.GadgetTypDendroCore {
++			return
++		}
++		if c.isSeedOfDeceit(core) {
++			return
++		}
++
++		c.replaceDendroCoreWithSeed(core)
++	}, "nefer-p1-seed-conversion")
++}
++
++func (c *char) startSeedWindow() {
++	if !c.p1Active() {
++		return
++	}
++
++	c.AddStatus(seedWindowKey, 15*60, true)
++	c.convertExistingDendroCores()
++}
++
++func (c *char) convertExistingDendroCores() {
++	for _, gadget := range c.Core.Combat.Gadgets() {
++		if gadget == nil || gadget.GadgetTyp() != info.GadgetTypDendroCore {
++			continue
++		}
++		if c.isSeedOfDeceit(gadget) {
++			continue
++		}
++		c.replaceDendroCoreWithSeed(gadget)
++	}
++}
++
++func (c *char) replaceDendroCoreWithSeed(core info.Gadget) {
++	pos := core.Pos()
++	c.Core.Combat.RemoveGadget(core.Key())
++	seed := newSeedGadget(c.Core, pos)
++	c.Core.Combat.AddGadget(seed)
++	if c.Core.Flags.LogDebug {
++		c.Core.Log.NewEvent("nefer seed of deceit created", glog.LogCharacterEvent, c.Index()).Write("expiry", c.Core.F+seedDuration)
++	}
++}
++
++func (c *char) isSeedOfDeceit(g info.Gadget) bool {
++	if g == nil {
++		return false
++	}
++	_, ok := g.(*seedGadget)
++	return ok
++}
++
++func (c *char) absorbSeedsOfDeceit() {
++	seeds := c.Core.Combat.GadgetsWithinArea(combat.NewCircleHitOnTarget(c.Core.Combat.Player(), nil, seedAbsorbRadius), func(g info.Gadget) bool {
++		return c.isSeedOfDeceit(g)
++	})
++	if len(seeds) == 0 {
++		return
++	}
++	count := len(seeds)
++	for _, seed := range seeds {
++		c.Core.Combat.RemoveGadget(seed.Key())
++	}
++	c.addVeilStacks(count)
++	if c.Core.Flags.LogDebug {
++		c.Core.Log.NewEvent("nefer seeds of deceit absorbed", glog.LogCharacterEvent, c.Index()).Write("absorbed", count).Write("radius_assumption", seedAbsorbRadius).Write("veil", c.currentVeilStacks())
++	}
++}
+diff --git a/internal/characters/nefer/skill.go b/internal/characters/nefer/skill.go
+new file mode 100644
+index 00000000..edbdb3a6
+--- /dev/null
++++ b/internal/characters/nefer/skill.go
+@@ -0,0 +1,76 @@
++package nefer
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++var skillFrames []int
++
++const skillHitmark = 24
++
++const particleICDKey = "nefer-particle-icd"
++
++func init() {
++	skillFrames = frames.InitAbilSlice(52)
++	skillFrames[action.ActionAttack] = 26
++	skillFrames[action.ActionCharge] = 29
++	skillFrames[action.ActionDash] = 38
++	skillFrames[action.ActionJump] = 38
++	skillFrames[action.ActionSwap] = 25
++	skillFrames[action.ActionBurst] = 38
++	skillFrames[action.ActionWalk] = 34
++}
++
++func (c *char) Skill(p map[string]int) (action.Info, error) {
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Senet Strategy: Dance of a Thousand Nights",
++		AttackTag:  attacks.AttackTagElementalArt,
++		ICDTag:     attacks.ICDTagElementalArt,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeBlunt,
++		Element:    attributes.Dendro,
++		Durability: 25,
++		Mult:       skill[0][c.TalentLvlSkill()],
++		FlatDmg:    c.Stat(attributes.EM) * skill[1][c.TalentLvlSkill()],
++	}
++
++	c.Core.QueueAttack(ai, combat.NewCircleHit(c.Core.Combat.Player(), c.Core.Combat.PrimaryTarget(), info.Point{Y: 1}, 3), skillHitmark, skillHitmark, c.skillParticleCB)
++	c.AddStatus(shadowDanceKey, 9*60, true)
++	c.phantasmCharges = phantasmChargesPerSkill
++	c.startSeedWindow()
++	c.SetCDWithDelay(action.ActionSkill, 9*60, 22)
++
++	if c.Base.Cons >= 2 && c.ascendantGleam {
++		c.addVeilStacks(2)
++	}
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(skillFrames),
++		AnimationLength: skillFrames[action.InvalidAction],
++		CanQueueAfter:   skillFrames[action.ActionSwap],
++		State:           action.SkillState,
++	}, nil
++}
++
++func (c *char) skillParticleCB(a info.AttackCB) {
++	if a.Target.Type() != info.TargettableEnemy {
++		return
++	}
++	if c.StatusIsActive(particleICDKey) {
++		return
++	}
++
++	c.AddStatus(particleICDKey, 0.2*60, false)
++
++	count := 2.0
++	if c.Core.Rand.Float64() < 0.66 {
++		count = 3
++	}
++	c.Core.QueueParticle(c.Base.Key.String(), count, attributes.Dendro, c.ParticleDelay)
++}
+diff --git a/internal/characters/nefer/zz_nefer.dm.go b/internal/characters/nefer/zz_nefer.dm.go
+new file mode 100644
+index 00000000..67fbab42
+--- /dev/null
++++ b/internal/characters/nefer/zz_nefer.dm.go
+@@ -0,0 +1,419 @@
++// Code generated by "pipeline"; DO NOT EDIT.
++
++package nefer
++
++import (
++	"fmt"
++	"slices"
++
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/keys"
++	"github.com/genshinsim/gcsim/pkg/gcs/validation"
++)
++
++func init() {
++	core.RegisterCharFunc(keys.Nefer, NewChar)
++	paramsFor := map[action.Action][]string{}
++	validation.RegisterCharParamValidationFunc(keys.Nefer, func(a action.Action, keys []string) error {
++		valid, ok := paramsFor[a]
++		if !ok {
++			return nil
++		}
++		for _, v := range keys {
++			if !slices.Contains(valid, v) {
++				return fmt.Errorf("key %v is invalid for action %v", v, a)
++			}
++		}
++		return nil
++	})
++}
++
++var (
++	attack = [][]float64{
++		{ // attack: StrikingSerpent - 1-Hit DMG: {0}
++			0.380712,
++			0.409265,
++			0.437819,
++			0.47589,
++			0.504443,
++			0.532997,
++			0.571068,
++			0.609139,
++			0.64721,
++			0.685282,
++			0.723353,
++			0.761424,
++			0.809013,
++			0.856602,
++			0.904191,
++		},
++		{ // attack: StrikingSerpent - 2-Hit DMG: {1}
++			0.37564,
++			0.403813,
++			0.431986,
++			0.46955,
++			0.497723,
++			0.525896,
++			0.56346,
++			0.601024,
++			0.638588,
++			0.676152,
++			0.713716,
++			0.75128,
++			0.798235,
++			0.84519,
++			0.892145,
++		},
++		{ // attack: StrikingSerpent - 3-Hit DMG: {2}×2
++			0.2524,
++			0.27133,
++			0.29026,
++			0.3155,
++			0.33443,
++			0.35336,
++			0.3786,
++			0.40384,
++			0.42908,
++			0.45432,
++			0.47956,
++			0.5048,
++			0.53635,
++			0.5679,
++			0.59945,
++		},
++		{ // attack: StrikingSerpent - 4-Hit DMG: {3}
++			0.609944,
++			0.65569,
++			0.701436,
++			0.76243,
++			0.808176,
++			0.853922,
++			0.914916,
++			0.97591,
++			1.036905,
++			1.097899,
++			1.158894,
++			1.219888,
++			1.296131,
++			1.372374,
++			1.448617,
++		},
++	}
++	// attack: StrikingSerpent - Charged Attack DMG: {4}
++	charge = []float64{
++		1.3088,
++		1.40696,
++		1.50512,
++		1.636,
++		1.73416,
++		1.83232,
++		1.9632,
++		2.09408,
++		2.22496,
++		2.35584,
++		2.48672,
++		2.6176,
++		2.7812,
++		2.9448,
++		3.1084,
++	}
++	// attack: StrikingSerpent - Plunge DMG: {7}
++	collision = []float64{
++		0.568288,
++		0.614544,
++		0.6608,
++		0.72688,
++		0.773136,
++		0.826,
++		0.898688,
++		0.971376,
++		1.044064,
++		1.12336,
++		1.202656,
++		1.281952,
++		1.361248,
++		1.440544,
++		1.51984,
++	}
++	// attack: StrikingSerpent - Low/High Plunge DMG: {8}/{9}
++	low = []float64{
++		1.136335,
++		1.228828,
++		1.32132,
++		1.453452,
++		1.545944,
++		1.65165,
++		1.796995,
++		1.94234,
++		2.087686,
++		2.246244,
++		2.404802,
++		2.563361,
++		2.721919,
++		2.880478,
++		3.039036,
++	}
++	// attack: StrikingSerpent - Low/High Plunge DMG: {8}/{9}
++	high = []float64{
++		1.419344,
++		1.534872,
++		1.6504,
++		1.81544,
++		1.930968,
++		2.063,
++		2.244544,
++		2.426088,
++		2.607632,
++		2.80568,
++		3.003728,
++		3.201776,
++		3.399824,
++		3.597872,
++		3.79592,
++	}
++	skill = [][]float64{
++		{ // skill: SenetStrategyDanceOfAThousandNights - Skill DMG: {0} ATK+{1} Elemental Mastery
++			0.76384,
++			0.821128,
++			0.878416,
++			0.9548,
++			1.012088,
++			1.069376,
++			1.14576,
++			1.222144,
++			1.298528,
++			1.374912,
++			1.451296,
++			1.52768,
++			1.62316,
++			1.71864,
++			1.81412,
++		},
++		{ // skill: SenetStrategyDanceOfAThousandNights - Skill DMG: {0} ATK+{1} Elemental Mastery
++			1.52768,
++			1.642256,
++			1.756832,
++			1.9096,
++			2.024176,
++			2.138752,
++			2.29152,
++			2.444288,
++			2.597056,
++			2.749824,
++			2.902592,
++			3.05536,
++			3.24632,
++			3.43728,
++			3.62824,
++		},
++	}
++	phantasm = [][]float64{
++		{ // skill: SenetStrategyDanceOfAThousandNights - Phantasm Performance 1-Hit DMG (Nefer): {4} ATK+{5} Elemental Mastery
++			0.2464,
++			0.26488,
++			0.28336,
++			0.308,
++			0.32648,
++			0.34496,
++			0.3696,
++			0.39424,
++			0.41888,
++			0.44352,
++			0.46816,
++			0.4928,
++			0.5236,
++			0.5544,
++			0.5852,
++		},
++		{ // skill: SenetStrategyDanceOfAThousandNights - Phantasm Performance 1-Hit DMG (Nefer): {4} ATK+{5} Elemental Mastery
++			0.4928,
++			0.52976,
++			0.56672,
++			0.616,
++			0.65296,
++			0.68992,
++			0.7392,
++			0.78848,
++			0.83776,
++			0.88704,
++			0.93632,
++			0.9856,
++			1.0472,
++			1.1088,
++			1.1704,
++		},
++		{ // skill: SenetStrategyDanceOfAThousandNights - Phantasm Performance 2-Hit DMG (Nefer): {6} ATK+{7} Elemental Mastery
++			0.32032,
++			0.344344,
++			0.368368,
++			0.4004,
++			0.424424,
++			0.448448,
++			0.48048,
++			0.512512,
++			0.544544,
++			0.576576,
++			0.608608,
++			0.64064,
++			0.68068,
++			0.72072,
++			0.76076,
++		},
++		{ // skill: SenetStrategyDanceOfAThousandNights - Phantasm Performance 2-Hit DMG (Nefer): {6} ATK+{7} Elemental Mastery
++			0.64064,
++			0.688688,
++			0.736736,
++			0.8008,
++			0.848848,
++			0.896896,
++			0.96096,
++			1.025024,
++			1.089088,
++			1.153152,
++			1.217216,
++			1.28128,
++			1.36136,
++			1.44144,
++			1.52152,
++		},
++		{ // skill: SenetStrategyDanceOfAThousandNights - Phantasm Performance 1-Hit DMG (Shades): {8} Elemental Mastery
++			0.96,
++			1.032,
++			1.104,
++			1.2,
++			1.272,
++			1.344,
++			1.44,
++			1.536,
++			1.632,
++			1.728,
++			1.824,
++			1.92,
++			2.04,
++			2.16,
++			2.28,
++		},
++		{ // skill: SenetStrategyDanceOfAThousandNights - Phantasm Performance 2-Hit DMG (Shades): {9} Elemental Mastery
++			0.96,
++			1.032,
++			1.104,
++			1.2,
++			1.272,
++			1.344,
++			1.44,
++			1.536,
++			1.632,
++			1.728,
++			1.824,
++			1.92,
++			2.04,
++			2.16,
++			2.28,
++		},
++		{ // skill: SenetStrategyDanceOfAThousandNights - Phantasm Performance 3-Hit DMG (Shades): {10} Elemental Mastery
++			1.28,
++			1.376,
++			1.472,
++			1.6,
++			1.696,
++			1.792,
++			1.92,
++			2.048,
++			2.176,
++			2.304,
++			2.432,
++			2.56,
++			2.72,
++			2.88,
++			3.04,
++		},
++	}
++	burst = [][]float64{
++		{ // burst: SacredVowTrueEyesPhantasm - 1-Hit DMG: {0} ATK+{1} Elemental Mastery
++			2.2464,
++			2.41488,
++			2.58336,
++			2.808,
++			2.97648,
++			3.14496,
++			3.3696,
++			3.59424,
++			3.81888,
++			4.04352,
++			4.26816,
++			4.4928,
++			4.7736,
++			5.0544,
++			5.3352,
++		},
++		{ // burst: SacredVowTrueEyesPhantasm - 1-Hit DMG: {0} ATK+{1} Elemental Mastery
++			4.4928,
++			4.82976,
++			5.16672,
++			5.616,
++			5.95296,
++			6.28992,
++			6.7392,
++			7.18848,
++			7.63776,
++			8.08704,
++			8.53632,
++			8.9856,
++			9.5472,
++			10.1088,
++			10.6704,
++		},
++		{ // burst: SacredVowTrueEyesPhantasm - 2-Hit DMG: {2} ATK+{3} Elemental Mastery
++			3.3696,
++			3.62232,
++			3.87504,
++			4.212,
++			4.46472,
++			4.71744,
++			5.0544,
++			5.39136,
++			5.72832,
++			6.06528,
++			6.40224,
++			6.7392,
++			7.1604,
++			7.5816,
++			8.0028,
++		},
++		{ // burst: SacredVowTrueEyesPhantasm - 2-Hit DMG: {2} ATK+{3} Elemental Mastery
++			6.7392,
++			7.24464,
++			7.75008,
++			8.424,
++			8.92944,
++			9.43488,
++			10.1088,
++			10.78272,
++			11.45664,
++			12.13056,
++			12.80448,
++			13.4784,
++			14.3208,
++			15.1632,
++			16.0056,
++		},
++		{ // burst: SacredVowTrueEyesPhantasm - DMG Bonus: {4} Per Veil of Falsehood Stack
++			0.13,
++			0.16,
++			0.19,
++			0.22,
++			0.25,
++			0.28,
++			0.31,
++			0.34,
++			0.37,
++			0.4,
++			0.43,
++			0.46,
++			0.49,
++			0.52,
++			0.55,
++		},
++	}
++)
+diff --git a/internal/services/assets/character.dm.go b/internal/services/assets/character.dm.go
+index bc3b85bb..d9596690 100644
+--- a/internal/services/assets/character.dm.go
++++ b/internal/services/assets/character.dm.go
+@@ -88,6 +88,7 @@ var avatarMap = map[string]string{
+ 	"mualani":           "UI_AvatarIcon_Mualani",
+ 	"nahida":            "UI_AvatarIcon_Nahida",
+ 	"navia":             "UI_AvatarIcon_Navia",
++	"nefer":             "UI_AvatarIcon_Nefer",
+ 	"neuvillette":       "UI_AvatarIcon_Neuvillette",
+ 	"nicole":            "UI_AvatarIcon_Nicole",
+ 	"nilou":             "UI_AvatarIcon_Nilou",
+diff --git a/pkg/catalog/character.dm.go b/pkg/catalog/character.dm.go
+index 0ff94fad..8c858db2 100644
+--- a/pkg/catalog/character.dm.go
++++ b/pkg/catalog/character.dm.go
+@@ -12928,6 +12928,159 @@ var CharacterMap = map[keys.Char]*model.AvatarData{
+ 			BurstEnergyCost: 60.0,
+ 		},
+ 	},
++	keys.Nefer: {
++		Id:          10000122,
++		SubId:       12201,
++		Key:         "nefer",
++		Rarity:      model.QualityType_QUALITY_ORANGE,
++		Body:        model.BodyType_BODY_LADY,
++		Region:      model.AssocType_ASSOC_TYPE_NODKRAI,
++		Element:     model.ElementType_Grass,
++		WeaponClass: model.WeaponType_WEAPON_CATALYST,
++		IconName:    "UI_AvatarIcon_Nefer",
++		Stats: &model.AvatarStatsData{
++			BaseHp:   988.9742,
++			BaseAtk:  26.8128,
++			BaseDef:  62.2232,
++			HpCurve:  model.GrowCurveType_GROW_CURVE_HP_S5,
++			AtkCurve: model.GrowCurveType_GROW_CURVE_ATTACK_S5,
++			DefCruve: model.GrowCurveType_GROW_CURVE_HP_S5,
++			PromoData: []*model.PromotionData{
++				{
++					MaxLevel: 20,
++				},
++				{
++					MaxLevel: 40,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    847.95593,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    53.352,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    22.987871,
++						},
++					},
++				},
++				{
++					MaxLevel: 50,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    1450.4509,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    91.26,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    39.32136,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL_HURT,
++							Value:    0.096,
++						},
++					},
++				},
++				{
++					MaxLevel: 60,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    2253.7776,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    141.804,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    61.099342,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL_HURT,
++							Value:    0.192,
++						},
++					},
++				},
++				{
++					MaxLevel: 70,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    2856.2727,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    179.712,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    77.43283,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL_HURT,
++							Value:    0.192,
++						},
++					},
++				},
++				{
++					MaxLevel: 80,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    3458.7676,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    217.62,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    93.76632,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL_HURT,
++							Value:    0.288,
++						},
++					},
++				},
++				{
++					MaxLevel: 90,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    4061.2627,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    255.528,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    110.09981,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL_HURT,
++							Value:    0.384,
++						},
++					},
++				},
++			},
++			ElementMastery: 100.0,
++		},
++		SkillDetails: &model.AvatarSkillsData{
++			Skill:           11222,
++			Burst:           11225,
++			Attack:          11221,
++			BurstEnergyCost: 60.0,
++		},
++	},
+ 	keys.Neuvillette: {
+ 		Id:          10000087,
+ 		SubId:       8701,
+diff --git a/pkg/core/keys/character.dm.go b/pkg/core/keys/character.dm.go
+index 45c5a9ed..1135f0fb 100644
+--- a/pkg/core/keys/character.dm.go
++++ b/pkg/core/keys/character.dm.go
+@@ -128,6 +128,7 @@ const (
+ 	Mualani                       // mualani
+ 	Nahida                        // nahida
+ 	Navia                         // navia
++	Nefer                         // nefer
+ 	Neuvillette                   // neuvillette
+ 	Nicole                        // nicole
+ 	Nilou                         // nilou
+@@ -262,6 +263,7 @@ var _CharNames = [...]string{
+ 	"mualani",
+ 	"nahida",
+ 	"navia",
++	"nefer",
+ 	"neuvillette",
+ 	"nicole",
+ 	"nilou",
+@@ -396,6 +398,7 @@ var _CharValues = [...]Char{
+ 	Mualani,
+ 	Nahida,
+ 	Navia,
++	Nefer,
+ 	Neuvillette,
+ 	Nicole,
+ 	Nilou,
+diff --git a/pkg/core/player/player.go b/pkg/core/player/player.go
+index b2a29466..50bdf8f3 100644
+--- a/pkg/core/player/player.go
++++ b/pkg/core/player/player.go
+@@ -67,7 +67,8 @@ type Handler struct {
+ 
+ 	verdantDewExpiryFrame int
+ 	verdantDew            int
+-	partialDewCount       int
++	partialDewCount       float64
++	verdantDewRateMods    []verdantDewRateMod
+ 
+ 	moonridgeDew int
+ }
+@@ -84,12 +85,13 @@ type Opt struct {
+ 
+ func New(opt Opt) *Handler {
+ 	h := &Handler{
+-		chars:           make([]*character.CharWrapper, 0, 4),
+-		charPos:         make(map[keys.Char]int),
+-		stamPercentMods: make([]stamPercentMod, 0, 5),
+-		Opt:             opt,
+-		Stam:            MaxStam,
+-		SwapICD:         SwapCDFrames,
++		chars:              make([]*character.CharWrapper, 0, 4),
++		charPos:            make(map[keys.Char]int),
++		stamPercentMods:    make([]stamPercentMod, 0, 5),
++		verdantDewRateMods: make([]verdantDewRateMod, 0, 2),
++		Opt:                opt,
++		Stam:               MaxStam,
++		SwapICD:            SwapCDFrames,
+ 	}
+ 	h.Shields = shield.New(opt.F, opt.Log, opt.Events)
+ 	h.Handler = infusion.New(opt.F, opt.Log, opt.Debug)
+diff --git a/pkg/core/player/verdantdew.go b/pkg/core/player/verdantdew.go
+index 6a855af0..9f69ae51 100644
+--- a/pkg/core/player/verdantdew.go
++++ b/pkg/core/player/verdantdew.go
+@@ -25,7 +25,7 @@ func (h *Handler) verdantDewGen() {
+ 		h.Log.NewEvent("verdant dew generation stopped", glog.LogElementEvent, -1)
+ 	}
+ 
+-	h.partialDewCount++
++	h.partialDewCount += 1 + h.VerdantDewRateMod()
+ 	if h.partialDewCount >= maxPartialDew {
+ 		h.AddVerdantDew()
+ 		h.partialDewCount = 0
+diff --git a/pkg/core/player/verdantdew_rate.go b/pkg/core/player/verdantdew_rate.go
+new file mode 100644
+index 00000000..4f3aa1be
+--- /dev/null
++++ b/pkg/core/player/verdantdew_rate.go
+@@ -0,0 +1,82 @@
++package player
++
++import "github.com/genshinsim/gcsim/pkg/core/glog"
++
++type VerdantDewRateModFunc func() (float64, bool)
++
++type verdantDewRateMod struct {
++	Key    string
++	Amount VerdantDewRateModFunc
++	Expiry int
++	Event  glog.Event
++}
++
++func (h *Handler) VerdantDewRateMod() float64 {
++	n := 0
++	amt := 0.0
++	for _, mod := range h.verdantDewRateMods {
++		if mod.Expiry > *h.F || mod.Expiry == -1 {
++			value, done := mod.Amount()
++			amt += value
++			if !done {
++				h.verdantDewRateMods[n] = mod
++				n++
++			}
++		}
++	}
++	h.verdantDewRateMods = h.verdantDewRateMods[:n]
++	return amt
++}
++
++func (h *Handler) VerdantDewRateModIsActive(key string) bool {
++	for _, mod := range h.verdantDewRateMods {
++		if mod.Key == key {
++			return mod.Expiry == -1 || mod.Expiry >= *h.F
++		}
++	}
++	return false
++}
++
++func (h *Handler) AddVerdantDewRateMod(key string, dur int, f VerdantDewRateModFunc) {
++	mod := verdantDewRateMod{
++		Key:    key,
++		Amount: f,
++		Expiry: *h.F + dur,
++	}
++	if dur < 0 {
++		mod.Expiry = -1
++	}
++
++	ind := -1
++	for i, existing := range h.verdantDewRateMods {
++		if existing.Key == key {
++			ind = i
++			break
++		}
++	}
++
++	if ind == -1 {
++		mod.Event = h.Log.NewEvent("verdant dew rate mod added", glog.LogStatusEvent, -1).
++			Write("overwrite", false).
++			Write("key", key).
++			Write("expiry", mod.Expiry)
++		mod.Event.SetEnded(mod.Expiry)
++		h.verdantDewRateMods = append(h.verdantDewRateMods, mod)
++		return
++	}
++
++	if h.verdantDewRateMods[ind].Expiry > *h.F || h.verdantDewRateMods[ind].Expiry == -1 {
++		h.Log.NewEvent("verdant dew rate mod refreshed", glog.LogStatusEvent, -1).
++			Write("overwrite", true).
++			Write("key", key).
++			Write("expiry", mod.Expiry)
++		mod.Event = h.verdantDewRateMods[ind].Event
++	} else {
++		mod.Event = h.Log.NewEvent("verdant dew rate mod added", glog.LogStatusEvent, -1).
++			Write("overwrite", false).
++			Write("key", key).
++			Write("expiry", mod.Expiry)
++	}
++	mod.Event.SetEnded(mod.Expiry)
++	h.verdantDewRateMods[ind] = mod
++}
+diff --git a/pkg/result/check.go b/pkg/result/check.go
+index bbb19ecf..ba1cfa37 100644
+--- a/pkg/result/check.go
++++ b/pkg/result/check.go
+@@ -11,6 +11,7 @@ var incompleteCharacters = []keys.Char{
+ 	keys.InvalidChar,
+ 	keys.Iansan,
+ 	keys.Linnea,
++	keys.Nefer, // kairi: experimental (unmerged pull request), so results show gcsim's incomplete warning
+ }
+ 
+ func IsCharacterComplete(char keys.Char) bool {
+diff --git a/pkg/shortcut/character.dm.go b/pkg/shortcut/character.dm.go
+index 869922bc..79dcc7a2 100644
+--- a/pkg/shortcut/character.dm.go
++++ b/pkg/shortcut/character.dm.go
+@@ -126,6 +126,7 @@ var CharNameToKey = map[string]keys.Char{
+ 	"lesserlordkusanali":      keys.Nahida,
+ 	"navia":                   keys.Navia,
+ 	"demoiselle":              keys.Navia,
++	"nefer":                   keys.Nefer,
+ 	"neuvillette":             keys.Neuvillette,
+ 	"chiefjusticeoffontaine":  keys.Neuvillette,
+ 	"neuv":                    keys.Neuvillette,
+diff --git a/pkg/simulation/imports.character.dm.go b/pkg/simulation/imports.character.dm.go
+index c3f72937..a8c1b48a 100644
+--- a/pkg/simulation/imports.character.dm.go
++++ b/pkg/simulation/imports.character.dm.go
+@@ -76,6 +76,7 @@ import (
+ 	_ "github.com/genshinsim/gcsim/internal/characters/mualani"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/nahida"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/navia"
++	_ "github.com/genshinsim/gcsim/internal/characters/nefer"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/neuvillette"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/nicole"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/nilou"
