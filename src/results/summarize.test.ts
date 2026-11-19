@@ -138,3 +138,43 @@ describe('names', () => {
     expect(view.sources.some((s) => s.source === 'Swirl (Hydro)' && s.character === 'Kaedehara Kazuha')).toBe(true);
   });
 });
+
+describe('time to kill (enemies with HP)', () => {
+  const stat = (mean: number, min: number, max: number, sd: number) => ({ mean, min, max, sd });
+  const killResult = (leastDamage: number): GcsimResult => ({
+    mode: 2,
+    target_details: [{ hp: 1_000_000 }, { hp: 1_000_000 }],
+    simulator_settings: { duration: 120 },
+    statistics: {
+      iterations: 100,
+      dps: stat(40000, 35000, 45000, 2000),
+      duration: stat(50, 44, 58, 3),
+      total_damage: stat(2_000_000, leastDamage, 2_000_000, 0),
+    },
+  });
+
+  it('is only there for fights that run until the enemies die', () => {
+    expect(view.kill).toBeUndefined();
+    const kill = summarize(killResult(2_000_000)).kill!;
+    expect(kill.hp).toBe(2_000_000); // both enemies' HP
+    expect(kill.time.mean).toBe(50);
+    expect(kill.precision).toBeCloseTo((1.96 * 3) / 10, 6);
+    expect(kill.limit).toBe(120);
+    expect(kill.someSurvived).toBe(false);
+  });
+
+  it('notices fights that hit the time limit with the enemies still alive', () => {
+    const kill = summarize(killResult(1_700_000)).kill!;
+    expect(kill.someSurvived).toBe(true);
+    expect(kill.leastDamage).toBe(1_700_000);
+  });
+
+  it('says when no fight killed the enemies at all', () => {
+    expect(summarize(killResult(1_700_000)).kill!.noneKilled).toBe(false);
+    const none = killResult(400_000);
+    none.statistics.total_damage = { mean: 500_000, min: 400_000, max: 600_000, sd: 50_000 };
+    const kill = summarize(none).kill!;
+    expect(kill.noneKilled).toBe(true);
+    expect(kill.mostDamage).toBe(600_000);
+  });
+});

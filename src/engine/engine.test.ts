@@ -77,6 +77,29 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(Math.abs(dps - 35126) / 35126).toBeLessThan(0.1);
   });
 
+  it('runs until the enemy dies when it has HP, and stops at the time limit when it does not die', () => {
+    const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
+    const run = (enemyHp: number, duration: number) => {
+      const built = buildConfig(placeholderTeam(data), data, plan, table, { ...DEFAULT_SETTINGS, enemyHp, duration }, 20);
+      expect(built.problems).toEqual([]);
+      expect(error(initializeAggregator(built.config!))).toBeUndefined();
+      expect(initializeWorker(built.config!)).toBeNull();
+      for (let i = 0; i < 20; i++) aggregate(simulate() as Uint8Array);
+      return JSON.parse((flush() as { result: string }).result);
+    };
+    // About 35,000 DPS against 2,000,000 HP: roughly a minute, well inside a 300 s limit.
+    const killed = run(2_000_000, 300);
+    expect(killed.mode).toBe(2);
+    expect(killed.statistics.total_damage.min).toBeCloseTo(2_000_000, 0);
+    expect(killed.statistics.duration.mean).toBeGreaterThan(40);
+    expect(killed.statistics.duration.mean).toBeLessThan(90);
+    // Far too much HP: every fight stops soon after the 30 s limit, with the enemy alive.
+    const alive = run(100_000_000, 30);
+    expect(alive.statistics.total_damage.max).toBeLessThan(100_000_000);
+    expect(alive.statistics.duration.min).toBeGreaterThanOrEqual(30);
+    expect(alive.statistics.duration.max).toBeLessThan(60);
+  });
+
   it("uses an enemy's real resistances (including negative ones and 200%) and freeze resistance", () => {
     const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
     const run = (enemy: string | null) => {

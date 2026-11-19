@@ -420,7 +420,12 @@ export default function App() {
                 notes,
                 // Rotation timing needs the turn markers, so only Team + Rotation runs get it.
                 source === 'team' && built?.timingConfig
-                  ? { config: built.timingConfig, turns: built.translation.turns, durationSeconds: cleanSettings(settings).duration }
+                  ? {
+                      config: built.timingConfig,
+                      turns: built.translation.turns,
+                      durationSeconds: cleanSettings(settings).duration,
+                      untilDead: !!cleanSettings(settings).enemyHp,
+                    }
                   : undefined,
                 // Saved with the run in the History.
                 source === 'team'

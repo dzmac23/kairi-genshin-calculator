@@ -22,6 +22,6 @@ export type WorkerRequest =
   | { id: number; type: 'markers'; config: string; seed: string };
 
 export type WorkerReply =
-  | { id: number; ok: true; summary?: Uint8Array; result?: string; markers?: { frame: number; msg: string }[] }
+  | { id: number; ok: true; summary?: Uint8Array; result?: string; markers?: { frame: number; msg: string }[]; endFrame?: number }
   /** fatal means the engine in this worker has crashed and the worker must be replaced. */
   | { id: number; ok: false; error: string; fatal: boolean };

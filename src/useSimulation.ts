@@ -41,7 +41,13 @@ export type FinishedRun = {
 };
 
 /** What's needed to measure rotation timing after a run (see rotation/timing.ts). */
-export type TimingRequest = { config: string; turns: Turn[]; durationSeconds: number };
+export type TimingRequest = {
+  config: string;
+  turns: Turn[];
+  durationSeconds: number;
+  /** The enemies have HP, so each fight ends when they die rather than at durationSeconds. */
+  untilDead?: boolean;
+};
 
 /** Number of replayed fights averaged for rotation timing. Fixed seeds, so results repeat. */
 const TIMING_REPLAYS = 10;
@@ -75,8 +81,16 @@ export function useSimulation() {
           setLastRun((r) => (r && r.finishedAt === finishedAt ? { ...r, timing: value } : r));
         pool
           .markers(timing.config, seeds)
-          .then((markers) =>
-            update(measureTiming(markers.map((m) => ({ markers: m, endFrame: timing.durationSeconds * FPS })), timing.turns)),
+          .then((replays) =>
+            update(
+              measureTiming(
+                replays.map((r) => ({
+                  markers: r.markers,
+                  endFrame: timing.untilDead && r.endFrame ? r.endFrame : timing.durationSeconds * FPS,
+                })),
+                timing.turns,
+              ),
+            ),
           )
           .catch(() => update('failed'));
       }

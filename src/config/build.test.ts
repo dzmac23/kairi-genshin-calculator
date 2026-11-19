@@ -6,7 +6,7 @@ import { DEFAULT_TOKEN_TABLE, parseTokenTable } from '../rotation/tokens';
 import { emptySlot, type Team } from '../team/model';
 import { placeholderTeam } from '../team/placeholderTeam.testutil';
 import { buildConfig, teamMembers } from './build';
-import { cleanSettings, DEFAULT_SETTINGS, enemyPositions } from './settings';
+import { cleanSettings, DEFAULT_SETTINGS, enemyPositions, parseHp } from './settings';
 
 // The example rotation from PROJECT_PLAN.md, written the community way.
 const PLAN_ROTATION: RotationText = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
@@ -38,7 +38,7 @@ describe('buildConfig (Phase 1 acceptance check)', () => {
       'target lvl=100 resist=0.25 radius=2 pos=2.4,-4.1;',
     ]);
     expect(result.config).not.toContain('energy every');
-    // Never give enemies HP: gcsim would then run until they die instead of for the set duration.
+    // No HP unless one is set: gcsim would then run until they die instead of for the set duration.
     expect(targets.some((l) => l.includes('hp='))).toBe(false);
   });
 
@@ -66,6 +66,34 @@ describe('buildConfig (Phase 1 acceptance check)', () => {
     expect(enemySummary(data.enemy.get('childe')!)).toBe("Pyro 0% · Hydro 70% · Electro 70% · Cryo 0% · Anemo 0% · Geo 0% · Dendro 0% · Physical 0% · can't be frozen");
     expect(enemySummary(data.enemy.get('cryohypostasis')!)).toBe("10% to everything · can't be frozen");
     expect(enemySummary(data.enemy.get('azhdaha')!)).toBe("Geo 70% · Physical 40% · can't be frozen");
+  });
+
+  it('gives every enemy the HP and adds a time limit before each Loop turn when an enemy HP is set', () => {
+    const result = buildConfig(team, data, PLAN_ROTATION, table, { ...DEFAULT_SETTINGS, enemyHp: 3500000, enemies: 2, duration: 300 }, 100);
+    const all = lines(result.config!);
+    expect(all.filter((l) => l.startsWith('target')).every((l) => l.endsWith(' hp=3500000;'))).toBe(true);
+    // 300 s × 60 frames, checked before each of the 5 Loop turns.
+    expect(all.filter((l) => l === 'if f() >= 18000 { break; }')).toHaveLength(5);
+    expect(all.indexOf('if f() >= 18000 { break; }')).toBeGreaterThan(all.indexOf('while 1 {'));
+    // The timing config gets the same time limit.
+    expect(result.timingConfig).toContain('if f() >= 18000 { break; }');
+    // Without HP: no hp= and no time limit, as before.
+    const fixed = buildConfig(team, data, PLAN_ROTATION, table, DEFAULT_SETTINGS, 100);
+    expect(lines(fixed.config!).filter((l) => l.startsWith('target') && l.includes('hp='))).toEqual([]);
+    expect(fixed.config).not.toContain('f()');
+  });
+
+  it('reads HP the way people type it', () => {
+    expect(parseHp('')).toBeUndefined();
+    expect(parseHp('3500000')).toBe(3500000);
+    expect(parseHp('3,500,000')).toBe(3500000);
+    expect(parseHp(' 3 500 000 ')).toBe(3500000);
+    expect(parseHp('3.5m')).toBe(3500000);
+    expect(parseHp('800K')).toBe(800000);
+    expect(parseHp('lots')).toBeNaN();
+    expect(cleanSettings({ enemyHp: 0 }).enemyHp).toBeNull();
+    expect(cleanSettings({ enemyHp: 2e6 }).enemyHp).toBe(2e6);
+    expect(cleanSettings({}).enemyHp).toBeNull();
   });
 
   it('treats settings saved before the enemy library as a training dummy', () => {

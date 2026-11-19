@@ -150,12 +150,17 @@ export class SimPool {
 
   /**
    * Replays `seeds.length` fights of a config with markers (see rotation/timing.ts) and returns each
-   * fight's markers. Spread over the sim workers; each replay is one fight, so this is quick.
+   * fight's markers and the frame it ended on. Spread over the sim workers; each replay is one
+   * fight, so this is quick.
    */
-  async markers(config: string, seeds: string[]): Promise<{ frame: number; msg: string }[][]> {
+  async markers(config: string, seeds: string[]): Promise<{ markers: { frame: number; msg: string }[]; endFrame?: number }[]> {
     await this.start();
     const sims = this.sims;
-    return Promise.all(seeds.map((seed, i) => sims[i % sims.length].call({ type: 'markers', config, seed }).then((r) => r.markers ?? [])));
+    return Promise.all(
+      seeds.map((seed, i) =>
+        sims[i % sims.length].call({ type: 'markers', config, seed }).then((r) => ({ markers: r.markers ?? [], endFrame: r.endFrame })),
+      ),
+    );
   }
 
   /** Stops the current run. Its run() promise rejects with CancelledError. */

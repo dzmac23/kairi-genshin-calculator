@@ -259,6 +259,85 @@ function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
       ? (data?.enemy.get(settings.enemy)?.name ?? settings.enemy)
       : `Training dummy (${resistPercent(settings.enemyResist / 100)} resistance)`
     : undefined;
+  const enemyRow = enemy && (
+    <>
+      <dt>Enemy</dt>
+      <dd>
+        {enemy}
+        {settings && `, level ${settings.enemyLevel}`}
+        {settings && settings.enemies > 1 && ` ×${settings.enemies}`}
+      </dd>
+    </>
+  );
+  const kill = view.kill;
+  if (kill?.noneKilled) {
+    return (
+      <section className="card">
+        <h2>Time to kill</h2>
+        <p className="big hero warn">Not killed</p>
+        <p className="total-damage">
+          No fight killed the enemy within the {kill.limit ? `${secs(kill.limit)} ` : ''}time limit.{' '}
+          <span className="muted">
+            The best fight did {fmt(kill.mostDamage)} of {fmt(kill.hp)} HP ({Math.round((kill.mostDamage / kill.hp) * 100)}%).
+          </span>
+        </p>
+        <p className="small">Raise the time limit on the Run screen, or check the HP (it's per enemy).</p>
+        <dl className="stats">
+          <dt>Team DPS until the limit</dt>
+          <dd>{fmt(view.teamDps.mean)}</dd>
+          <dt>Simulated fights</dt>
+          <dd>{view.iterations.toLocaleString()}</dd>
+          {enemyRow}
+        </dl>
+      </section>
+    );
+  }
+  if (kill) {
+    return (
+      <section className="card">
+        <h2>Time to kill</h2>
+        <p className="big hero">{secs(kill.time.mean)}</p>
+        <p className="total-damage">
+          {fmt(view.teamDps.mean)} DPS <span className="muted">against {fmt(kill.hp)} HP{settings && settings.enemies > 1 ? ` (${settings.enemies} enemies)` : ''}</span>
+        </p>
+        <p className="precision">Accurate to about ±{secs(kill.precision)}</p>
+        <Info>
+          Every simulated fight is a little different (crits, energy drops), so the time to kill is an average. With{' '}
+          {view.iterations.toLocaleString()} fights, the true average is very likely within ±{secs(kill.precision)} of{' '}
+          {secs(kill.time.mean)}. DPS here is the damage divided by the time each fight took.
+        </Info>
+        {kill.someSurvived && (
+          <div className="callout warn-callout">
+            <p className="small">
+              <strong className="warn">Some fights hit the time limit{kill.limit ? ` (${secs(kill.limit)})` : ''} before the enemy died.</strong> The
+              weakest fight did {fmt(kill.leastDamage)} of {fmt(kill.hp)} HP. Those fights count with the time they lasted, so the
+              real average time to kill is longer than shown. Raise the time limit on the Run screen, or check the HP.
+            </p>
+          </div>
+        )}
+        <dl className="stats">
+          <dt>Typical spread between fights</dt>
+          <dd>±{secs(kill.time.sd)}</dd>
+          <dt>Fastest – slowest kill</dt>
+          <dd>{range(kill.time, secs)}</dd>
+          <dt>Worst – best fight (DPS)</dt>
+          <dd>{range(view.teamDps, fmt)}</dd>
+          <dt>Simulated fights</dt>
+          <dd>{view.iterations.toLocaleString()}</dd>
+          {kill.limit !== undefined && (
+            <>
+              <dt>Time limit</dt>
+              <dd>{secs(kill.limit)}</dd>
+            </>
+          )}
+          {enemyRow}
+        </dl>
+        <p className="muted small">
+          Finished {run.finishedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} in {run.seconds.toFixed(1)} s.
+        </p>
+      </section>
+    );
+  }
   return (
     <section className="card">
       <h2>Team DPS</h2>
@@ -284,16 +363,7 @@ function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
         <dd>{view.iterations.toLocaleString()}</dd>
         <dt>Fight length</dt>
         <dd>{secs(view.duration)}</dd>
-        {enemy && (
-          <>
-            <dt>Enemy</dt>
-            <dd>
-              {enemy}
-              {settings && `, level ${settings.enemyLevel}`}
-              {settings && settings.enemies > 1 && ` ×${settings.enemies}`}
-            </dd>
-          </>
-        )}
+        {enemyRow}
       </dl>
       <p className="muted small">
         Finished {run.finishedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} in {run.seconds.toFixed(1)} s.
@@ -579,16 +649,21 @@ function DamageOverTimeSection({ view }: { view: ResultsView }) {
   const d = view.damageOverTime;
   const [showTable, setShowTable] = useState(false);
   if (!d) return <p className="muted">This result doesn't include damage over time.</p>;
-  const peak = d.points.reduce((a, p) => (p.dps > a.dps ? p : a), d.points[0]);
-  const low = d.points.reduce((a, p) => (p.dps < a.dps ? p : a), d.points[0]);
-  const step = Math.max(1, Math.round(5 / (d.points[1]?.time - d.points[0]?.time || 0.5)));
+  // With enemy HP, fights end at different times. Up to the fastest kill, every fight is still going.
+  const cut = view.kill?.time.min;
+  const all = cut ? d.points.filter((p) => p.time <= cut) : d.points;
+  const points = all.length > 1 ? all : d.points;
+  const peak = points.reduce((a, p) => (p.dps > a.dps ? p : a), points[0]);
+  const low = points.reduce((a, p) => (p.dps < a.dps ? p : a), points[0]);
+  const step = Math.max(1, Math.round(5 / (points[1]?.time - points[0]?.time || 0.5)));
   return (
     <>
       <Info>
         Team damage per second through the fight, smoothed over {d.windowSeconds} seconds and averaged over all simulated
         fights. Peaks are burst windows; dips are downtime. Tap or hover the chart for exact values.
+        {cut && ` Fights last until the enemy dies, so the chart stops at the fastest kill (${cut.toFixed(0)} s), while every fight is still going.`}
       </Info>
-      <LineChart points={d.points} label={`Team DPS over the fight. Peak ${fmt(peak.dps)} at ${peak.time.toFixed(0)} s.`} format={(v) => `${fmt(v)} DPS`} />
+      <LineChart points={points} label={`Team DPS over the fight. Peak ${fmt(peak.dps)} at ${peak.time.toFixed(0)} s.`} format={(v) => `${fmt(v)} DPS`} />
       <p className="small">
         Peak <strong>{fmt(peak.dps)}</strong> DPS around {peak.time.toFixed(0)} s · lowest {fmt(low.dps)} around {low.time.toFixed(0)} s ·
         average {fmt(view.teamDps.mean)}.
@@ -605,7 +680,7 @@ function DamageOverTimeSection({ view }: { view: ResultsView }) {
             </tr>
           </thead>
           <tbody>
-            {d.points.filter((_, i) => i % step === 0).map((p) => (
+            {points.filter((_, i) => i % step === 0).map((p) => (
               <tr key={p.time}>
                 <td>{p.time.toFixed(0)} s</td>
                 <td className="num">{fmt(p.dps)}</td>

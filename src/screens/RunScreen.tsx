@@ -3,10 +3,11 @@ import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
 import { ENEMY_ELEMENTS, elementName, enemySummary, resistPercent, type Enemy } from '../data/gameData';
 import type { BuildResult } from '../config/build';
-import { MAX_ENEMIES, type SimSettings } from '../config/settings';
+import { MAX_ENEMIES, parseHp, type SimSettings } from '../config/settings';
 import { setIterations } from '../engine/config';
 import { workerCount } from '../engine/pool';
 import { isPlaceholderConfig, PLACEHOLDER_CONFIG, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
+import { killView, type GcsimResult } from '../results/summarize';
 import type { SimState } from '../useSimulation';
 
 const ITERATION_CHOICES = [
@@ -133,8 +134,14 @@ export default function RunScreen(props: Props) {
         <section className="card">
           <h2>Fight settings</h2>
           <EnemyChoice settings={settings} enemies={props.enemies} onChange={(enemy) => set({ enemy })} />
+          <HpField value={settings.enemyHp} enemies={settings.enemies} onChange={(enemyHp) => set({ enemyHp })} />
           <div className="stat-grid">
-            <NumberField label="Fight length" suffix="s" value={settings.duration} onChange={(v) => set({ duration: v ?? 90 })} />
+            <NumberField
+              label={settings.enemyHp ? 'Time limit' : 'Fight length'}
+              suffix="s"
+              value={settings.duration}
+              onChange={(v) => set({ duration: v ?? 90 })}
+            />
             <NumberField label="Enemy level" suffix="" value={settings.enemyLevel} onChange={(v) => set({ enemyLevel: v ?? 100 })} />
             {!settings.enemy && (
               <NumberField label="Enemy resistance" suffix="%" value={settings.enemyResist} onChange={(v) => set({ enemyResist: v ?? 10 })} />
@@ -206,6 +213,46 @@ export default function RunScreen(props: Props) {
         <Status state={state} now={now} onShowResults={onShowResults} />
       </section>
     </>
+  );
+}
+
+/** Optional enemy HP. Empty: a fixed-length fight. Filled in: fights last until the enemies die. */
+function HpField({ value, enemies, onChange }: { value: number | null; enemies: number; onChange: (hp: number | null) => void }) {
+  const [text, setText] = useState(value ? value.toLocaleString() : '');
+  useEffect(() => {
+    // Follow outside changes (loading a run's settings), but not while the box reads the same.
+    if ((parseHp(text) ?? null) !== value) setText(value ? value.toLocaleString() : '');
+  }, [value]);
+  const parsed = parseHp(text);
+  const bad = parsed !== undefined && !(parsed >= 1);
+  return (
+    <div className="field hp-field">
+      <label className="field-label" htmlFor="enemy-hp">
+        Enemy HP (optional{enemies > 1 ? ', each enemy' : ''})
+      </label>
+      <input
+        id="enemy-hp"
+        inputMode="decimal"
+        value={text}
+        placeholder="Empty = fixed fight length"
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = parseHp(e.target.value);
+          if (n === undefined) onChange(null);
+          else if (n >= 1) onChange(n);
+        }}
+      />
+      {bad ? (
+        <p className="warn small">Type a whole number of HP, like 3,500,000 or 3.5m.</p>
+      ) : value ? (
+        <p className="muted small">
+          {value.toLocaleString()} HP{enemies > 1 ? ` × ${enemies} enemies` : ''}. Each fight lasts until {enemies > 1 ? 'every enemy is' : 'the enemy is'} dead,
+          and Results show the time to kill. The time limit below stops fights that take too long.
+        </p>
+      ) : (
+        <p className="muted small">The enemy's actual HP (with any Abyss or Stygian multiplier). Leave empty for a fixed-length fight.</p>
+      )}
+    </div>
   );
 }
 
@@ -321,9 +368,27 @@ function Status({ state, now, onShowResults }: { state: SimState; now: number; o
       );
     case 'done': {
       const { dps, iterations } = state.result.statistics;
+      const kill = killView(state.result as GcsimResult);
       return (
         <div className="status">
-          <p className="big">{fmt(dps.mean)} DPS</p>
+          {kill?.noneKilled ? (
+            <>
+              <p className="big warn">Not killed</p>
+              <p className="small">
+                No fight killed the enemy within the time limit ({fmt(dps.mean)} DPS). Raise the time limit or check the HP.
+              </p>
+            </>
+          ) : kill ? (
+            <>
+              <p className="big">{kill.time.mean.toFixed(1)} s to kill</p>
+              <p className="small">
+                {fmt(dps.mean)} DPS · fastest {kill.time.min.toFixed(1)} s, slowest {kill.time.max.toFixed(1)} s
+              </p>
+              {kill.someSurvived && <p className="warn small">Some fights hit the time limit before the enemy died.</p>}
+            </>
+          ) : (
+            <p className="big">{fmt(dps.mean)} DPS</p>
+          )}
           <dl className="stats">
             <dt>Standard deviation</dt>
             <dd>{fmt(dps.sd)}</dd>

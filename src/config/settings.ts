@@ -7,10 +7,15 @@ export type SimSettings = {
   /** An enemy from data/enemies.json (gcsim's key), or null for a training dummy. */
   enemy: string | null;
   enemies: number; // 1 to 5
+  /**
+   * Each enemy's HP, or null for a fixed-length fight. With HP, fights last until every enemy is
+   * dead and `duration` is the time limit.
+   */
+  enemyHp: number | null;
   randomEnergy: boolean; // random elemental particles, as in the plan's sample
 };
 
-export const DEFAULT_SETTINGS: SimSettings = { duration: 90, enemyLevel: 100, enemyResist: 10, enemy: null, enemies: 1, randomEnergy: true };
+export const DEFAULT_SETTINGS: SimSettings = { duration: 90, enemyLevel: 100, enemyResist: 10, enemy: null, enemies: 1, enemyHp: null, randomEnergy: true };
 
 export const MAX_ENEMIES = 5;
 
@@ -35,6 +40,20 @@ export function cleanSettings(s: Partial<SimSettings>): SimSettings {
     // Settings saved before the enemy library have no enemy: a training dummy, as before.
     enemy: typeof s.enemy === 'string' && s.enemy ? s.enemy : null,
     enemies: Math.round(n(s.enemies, DEFAULT_SETTINGS.enemies, 1, MAX_ENEMIES)),
+    enemyHp: typeof s.enemyHp === 'number' && Number.isFinite(s.enemyHp) && s.enemyHp >= 1 ? Math.round(Math.min(s.enemyHp, 1e13)) : null,
     randomEnergy: typeof s.randomEnergy === 'boolean' ? s.randomEnergy : DEFAULT_SETTINGS.randomEnergy,
   };
+}
+
+/**
+ * Reads an HP typed by a person: "3500000", "3,500,000", "3 500 000", "3.5m" or "800k". Returns
+ * undefined for an empty box and NaN for something that isn't a number.
+ */
+export function parseHp(text: string): number | undefined {
+  const t = text.trim().toLowerCase().replace(/[\s,_']/g, '');
+  if (!t) return undefined;
+  const m = /^(\d+(?:\.\d+)?)([km]?)$/.exec(t);
+  if (!m) return NaN;
+  const scale = m[2] === 'm' ? 1e6 : m[2] === 'k' ? 1e3 : 1;
+  return Math.round(Number(m[1]) * scale);
 }
