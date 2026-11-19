@@ -106,3 +106,44 @@ describe('different teams', () => {
     expect(c.characters).toEqual([]);
   });
 });
+
+describe('time to kill comparisons', () => {
+  const kill = (seconds: number, hp = 3_000_000) =>
+    withDps(hp / seconds, (r) => {
+      r.mode = 2;
+      r.target_details = [{ ...r.target_details[0], hp }];
+      r.statistics.duration = { mean: seconds, min: seconds - 3, max: seconds + 3, sd: 2 };
+      // Every fight killed: gcsim counts damage up to the HP.
+      r.statistics.total_damage = { mean: hp, min: hp, max: hp, sd: 0 };
+    });
+
+  it('compares runs against the same HP by time to kill, where lower is better', () => {
+    const c = compareRuns(run(kill(50)), run(kill(45)));
+    expect(c.dps.metric).toBe('ttk');
+    expect(c.dps.verdict).toBe('b-better');
+    expect(verdictText(c.dps)).toBe('B is clearly better: it kills 5.0 s faster (−10.0%)');
+    expect(compareRuns(run(kill(45)), run(kill(50))).dps.verdict).toBe('a-better');
+    expect(verdictText(compareRuns(run(kill(50)), run(kill(50.1))).dps)).toMatch(/^Too close to call: B kills 0.1 s slower/);
+  });
+
+  it('falls back to DPS, with a warning, when the HP or the kind of fight differs', () => {
+    const differentHp = compareRuns(run(kill(50)), run(kill(50, 4_000_000)));
+    expect(differentHp.dps.metric).toBe('dps');
+    expect(differentHp.fairness).toContain('Enemy HP differs: A is 3,000,000, B is 4,000,000. Compared by DPS, not time to kill.');
+    const mixed = compareRuns(run(base), run(kill(50)));
+    expect(mixed.dps.metric).toBe('dps');
+    expect(mixed.fairness[0]).toBe('A runs for a fixed 90 s, B runs until the enemy dies (3,000,000 HP). Compared by DPS.');
+  });
+
+  it('compares by DPS when some fights hit the time limit', () => {
+    const timedOut = withDps(50000, (r) => {
+      r.mode = 2;
+      r.target_details = [{ ...r.target_details[0], hp: 3_000_000 }];
+      r.statistics.duration = { mean: 58, min: 55, max: 60, sd: 2 };
+      r.statistics.total_damage = { mean: 2_900_000, min: 2_750_000, max: 3_000_000, sd: 50_000 };
+    });
+    const c = compareRuns(run(kill(50)), run(timedOut));
+    expect(c.dps.metric).toBe('dps');
+    expect(c.fairness).toContain('Some fights in B hit the time limit before the enemy died, so the runs are compared by DPS, not time to kill.');
+  });
+});

@@ -421,3 +421,5 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .resist-list li { display: flex; flex-direction: column; align-items: flex-start; padding: 0.25rem 0.4rem; border-radius: 6px; background: #ffffff08; font-variant-numeric: tabular-nums; }
 .resist-list li.high strong { color: var(--warn); }
 .resist-list li.low strong { color: var(--good); }
+.run-dps-sub { display: block; font-weight: 400; text-align: right; }
+.hp-field input { width: 100%; }

@@ -2,7 +2,7 @@
 // reference/sample_gcsim_config.txt:
 //   <team lines>
 //   options iteration=N duration=D swap_delay=12;
-//   target lvl=L resist=R radius=2 pos=...;      (one per enemy; never hp=, see PROJECT_PLAN.md)
+//   target lvl=L resist=R radius=2 pos=... [hp=H];  (one per enemy; hp= only when an enemy HP is set)
 //     or, for an enemy from the library, its real resistances instead of resist=R:
 //   target lvl=L pyro=.. hydro=.. … physical=.. [freeze_resist=1] radius=2 pos=...;
 //   energy every interval=480,720 amount=1;       (when random energy is on)
@@ -10,6 +10,9 @@
 //   <loop counters, only when the rotation uses @>
 //   <opener statements, run once>
 //   while 1 { <loop statements> }
+// With an enemy HP, gcsim runs each fight until every enemy is dead instead of for the fight length.
+// The fight length then becomes a time limit: before each Loop turn, `if f() >= limit { break; }`
+// ends the rotation, which ends the fight (a turn already started still finishes).
 
 import { ENEMY_ELEMENTS, type Enemy, type GameData } from '../data/gameData';
 import { translateRotation, type RotationText, type TeamMember, type Translation, type Turn } from '../rotation/notation';
@@ -88,18 +91,25 @@ export function buildConfig(
   const firstTurn = translation.turns.find((t) => t.statements && !t.raw && t.member?.key);
   const first = firstTurn!.member!.key!;
   const { counters } = translation;
+  const limit = settings.enemyHp ? Math.round(settings.duration * 60) : 0;
   const make = (markers: boolean) => {
     const body = (section: 'opener' | 'loop', indent: string) =>
       translation.turns
         .filter((t) => t.section === section && t.statements)
-        .flatMap((t) => [...(markers ? [`print("${turnMarker(t)}");`] : []), ...t.statements!])
+        .flatMap((t) => [
+          // The time limit for fights with enemy HP (in the Loop only: break needs a loop).
+          ...(section === 'loop' && limit ? [`if f() >= ${limit} { break; }`] : []),
+          ...(markers ? [`print("${turnMarker(t)}");`] : []),
+          ...t.statements!,
+        ])
         .map((l) => indent + l);
     return [
       teamToGcsim(team, data),
       '',
       `options iteration=${iterations} duration=${num(settings.duration)} swap_delay=12;`,
       ...enemyPositions(settings.enemies).map(
-        ([x, y]) => `target lvl=${settings.enemyLevel} ${enemyResistance(enemy, settings)} radius=2 pos=${num(x)},${num(y)};`,
+        ([x, y]) =>
+          `target lvl=${settings.enemyLevel} ${enemyResistance(enemy, settings)} radius=2 pos=${num(x)},${num(y)}${settings.enemyHp ? ` hp=${settings.enemyHp}` : ''};`,
       ),
       ...(settings.randomEnergy ? ['energy every interval=480,720 amount=1;'] : []),
       `active ${first};`,

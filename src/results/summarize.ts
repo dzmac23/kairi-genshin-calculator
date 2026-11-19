@@ -15,6 +15,10 @@ type Buckets = { bucket_size?: number; buckets?: Stat[] };
 export type GcsimResult = {
   character_details?: { name: string; element?: string }[];
   incomplete_characters?: string[];
+  /** 2 = "fight until it dies" (the enemies have HP). Missing for fixed-length fights. */
+  mode?: number;
+  target_details?: { hp?: number }[];
+  simulator_settings?: { duration?: number };
   statistics: {
     iterations?: number;
     duration?: Stat;
@@ -136,7 +140,53 @@ export type ResultsView = {
   warnings: WarningRow[];
   energy: EnergyRow[];
   damageOverTime?: DamageOverTime;
+  /** Only when the enemies had HP: fights then last until they die (or the time limit). */
+  kill?: KillView;
 };
+
+export type KillView = {
+  /** All enemies' HP added together. */
+  hp: number;
+  /** How long fights lasted: the time to kill, in seconds. */
+  time: Stat;
+  /** ± seconds around the average time to kill (95%). */
+  precision: number;
+  /** Some fights ended at the time limit with the enemies still alive. */
+  someSurvived: boolean;
+  /** No fight killed the enemies: the "time to kill" is only the time limit. */
+  noneKilled: boolean;
+  /** The most damage done in a fight. */
+  mostDamage: number;
+  /** The least damage done in a fight, when some fights didn't kill. */
+  leastDamage: number;
+  /** The time limit, in seconds. */
+  limit?: number;
+};
+
+/** gcsim's "fight until it dies" mode, used when the enemies have HP. */
+export const KILL_MODE = 2;
+
+/** The time-to-kill part of a result, or undefined for a fixed-length fight. */
+export function killView(r: GcsimResult): KillView | undefined {
+  if (r.mode !== KILL_MODE) return undefined;
+  const s = r.statistics;
+  const hp = (r.target_details ?? []).reduce((a, t) => a + (t.hp ?? 0), 0);
+  const time = s.duration ?? { mean: 0, min: 0, max: 0, sd: 0 };
+  const n = s.iterations ?? 0;
+  const least = s.total_damage?.min ?? s.dps.min * time.min;
+  const most = s.total_damage?.max ?? s.dps.max * time.max;
+  return {
+    hp,
+    time,
+    precision: n > 1 ? (1.96 * time.sd) / Math.sqrt(n) : 0,
+    // gcsim stops counting damage at 0 HP, so a fight that killed did exactly the HP.
+    someSurvived: hp > 0 && least < hp * 0.9999,
+    leastDamage: least,
+    noneKilled: hp > 0 && most < hp * 0.9999,
+    mostDamage: most,
+    limit: r.simulator_settings?.duration,
+  };
+}
 
 const ENERGY_SOURCE_NAMES: Record<string, string> = {
   drop: 'Random energy drops',
@@ -332,5 +382,6 @@ export function summarize(result: GcsimResult): ResultsView {
     warnings,
     energy,
     damageOverTime: damageOverTime(s.damage_buckets),
+    kill: killView(result),
   };
 }

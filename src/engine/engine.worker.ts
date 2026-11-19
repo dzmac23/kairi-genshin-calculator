@@ -64,7 +64,11 @@ async function handle(req: WorkerRequest): Promise<Omit<Extract<WorkerReply, { o
       const out = sample(req.config, req.seed);
       throwIfError(out);
       const logs: { frame: number; msg: string }[] = JSON.parse(out).logs ?? [];
-      return { markers: logs.filter((l) => /^kc [ol]\d+$/.test(l.msg)).map((l) => ({ frame: l.frame, msg: l.msg })) };
+      return {
+        markers: logs.filter((l) => /^kc [ol]\d+$/.test(l.msg)).map((l) => ({ frame: l.frame, msg: l.msg })),
+        // Where the replay ended (the last logged frame): fights with enemy HP end when they die.
+        endFrame: logs.reduce((a, l) => Math.max(a, l.frame), 0),
+      };
     }
     case 'flush': {
       const flushed = flush();

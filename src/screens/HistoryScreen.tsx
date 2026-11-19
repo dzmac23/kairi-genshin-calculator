@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { canShareFiles, deliverFile } from '../history/files';
 import { runCharacters, runDps, runName, type RunRecord } from '../history/model';
 import { isPlaceholderConfig } from '../placeholder';
+import { killView, type GcsimResult } from '../results/summarize';
 import { makeFile } from '../transfer';
 
 type Props = {
@@ -176,6 +177,7 @@ function RunRow(p: {
   const [draft, setDraft] = useState(run.label ?? '');
   const [confirmLoad, setConfirmLoad] = useState(false);
   const stats = run.result.statistics as { iterations?: number; duration?: { mean: number } };
+  const kill = killView(run.result as GcsimResult);
   return (
     <li className={p.expanded ? 'run-row open' : 'run-row'}>
       <div className="run-main">
@@ -183,16 +185,20 @@ function RunRow(p: {
         <button className="run-summary" onClick={p.onToggleOpen} aria-expanded={p.expanded}>
           <span className="run-name">{runName(run)}</span>
           <span className="run-meta muted small">
-            {when(run.createdAt)} · {stats.iterations ?? '?'} fights · {stats.duration?.mean ?? '?'} s
+            {when(run.createdAt)} · {stats.iterations ?? '?'} fights · {kill ? `${fmt(kill.hp)} HP` : `${stats.duration?.mean ?? '?'} s`}
             {run.gcsimVersion ? ` · gcsim ${run.gcsimVersion}` : ''}
           </span>
           <span className="run-badges">
             {run.origin === 'imported' && <span className="badge">Imported</span>}
             {isPlaceholderConfig(run.config) && <span className="badge gold">Placeholder test team</span>}
             {run.source === 'paste' && !isPlaceholderConfig(run.config) && <span className="badge">Pasted config</span>}
+            {kill && <span className="badge">Time to kill</span>}
           </span>
         </button>
-        <span className="run-dps">{fmt(runDps(run))}</span>
+        <span className="run-dps">
+          {kill ? (kill.noneKilled ? 'No kill' : `${kill.time.mean.toFixed(1)} s`) : fmt(runDps(run))}
+          {kill && <span className="muted small run-dps-sub">{fmt(runDps(run))} DPS</span>}
+        </span>
       </div>
       {p.expanded && (
         <div className="run-actions">

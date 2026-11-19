@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { Legend, SegmentedBar, slotClass, type Part } from '../components/Charts';
-import { compareRuns, verdictText, type Comparison } from '../compare/compare';
+import { compareRuns, formatMetric, verdictText, type Comparison } from '../compare/compare';
 import { useGameData } from '../data/gameData';
 import { runDps, runName, type RunRecord } from '../history/model';
 import { readTransferFile } from '../transfer';
@@ -176,20 +176,30 @@ function ComparisonView({ c, a, b }: { c: Comparison; a: RunRecord; b: RunRecord
         <p className="verdict-text">{verdictText(c.dps)}.</p>
         <div className="ab-numbers">
           <span>
-            <span className="muted small">A</span> {fmt(c.dps.a)}
+            <span className="muted small">A</span> {formatMetric(c.dps, c.dps.a)}
           </span>
           <span className="muted">→</span>
           <span>
-            <span className="muted small">B</span> {fmt(c.dps.b)}
+            <span className="muted small">B</span> {formatMetric(c.dps, c.dps.b)}
           </span>
         </div>
         {c.dps.verdict === 'too-close' && Math.min(fightsA, fightsB) < 1000 && (
           <p className="small">Tip: run both with 1,000 fights for a sharper answer (A used {fightsA}, B used {fightsB}).</p>
         )}
         <Info>
-          Each run's team DPS is an average over its simulated fights, so it wobbles a little by chance. With these runs,
-          randomness alone could explain a difference of up to about ±{fmt(c.dps.margin)} DPS (95% confidence). A bigger
-          difference is real; a smaller one is too close to call. More fights make this margin smaller.
+          {c.dps.metric === 'ttk' ? (
+            <>
+              Both runs fight enemies with the same HP, so they're compared by time to kill (faster is better). Each run's
+              time is an average over its simulated fights, so it wobbles a little by chance. With these runs, randomness
+              alone could explain a difference of up to about ±{c.dps.margin.toFixed(1)} s (95% confidence).
+            </>
+          ) : (
+            <>
+              Each run's team DPS is an average over its simulated fights, so it wobbles a little by chance. With these runs,
+              randomness alone could explain a difference of up to about ±{fmt(c.dps.margin)} DPS (95% confidence).
+            </>
+          )}{' '}
+          A bigger difference is real; a smaller one is too close to call. More fights make this margin smaller.
         </Info>
       </section>
 

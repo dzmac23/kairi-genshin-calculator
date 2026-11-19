@@ -12,6 +12,8 @@ import { ARTIFACT_STATS, type Slot } from '../team/model';
 export type Verdict = 'b-better' | 'a-better' | 'too-close';
 
 export type DpsComparison = {
+  /** What is compared: team DPS (higher is better), or time to kill in seconds (lower is better). */
+  metric: 'dps' | 'ttk';
   a: number;
   b: number;
   /** b − a */
@@ -59,7 +61,7 @@ export type Comparison = {
 type Settings = {
   simulator_settings?: { duration?: number; iterations?: number; delays?: { swap?: number } };
   energy_settings?: { active?: boolean; start?: number; end?: number; amount?: number };
-  target_details?: { level?: number; resist?: Record<string, number> }[];
+  target_details?: { level?: number; resist?: Record<string, number>; hp?: number }[];
   sim_version?: string;
 };
 
@@ -67,17 +69,29 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
 export function compareDps(a: ResultsView, b: ResultsView): DpsComparison {
-  const se = (v: ResultsView) => (v.iterations > 1 ? v.teamDps.sd / Math.sqrt(v.iterations) : 0);
-  const diff = b.teamDps.mean - a.teamDps.mean;
+  // Two runs against enemies with the same HP: compare how fast they kill (lower is better).
+  // Otherwise (fixed-length fights, or a mix) compare team DPS.
+  // Fights that hit the time limit don't have a real time to kill, so then DPS is compared.
+  const ttk = !!a.kill && !!b.kill && a.kill.hp === b.kill.hp && !a.kill.someSurvived && !b.kill.someSurvived;
+  const stat = (v: ResultsView) => (ttk ? v.kill!.time : v.teamDps);
+  const se = (v: ResultsView) => (v.iterations > 1 ? stat(v).sd / Math.sqrt(v.iterations) : 0);
+  const diff = stat(b).mean - stat(a).mean;
   const margin = 1.96 * Math.sqrt(se(a) ** 2 + se(b) ** 2);
+  const bBetter = ttk ? diff < 0 : diff > 0;
   return {
-    a: a.teamDps.mean,
-    b: b.teamDps.mean,
+    metric: ttk ? 'ttk' : 'dps',
+    a: stat(a).mean,
+    b: stat(b).mean,
     diff,
-    pct: a.teamDps.mean ? diff / a.teamDps.mean : 0,
+    pct: stat(a).mean ? diff / stat(a).mean : 0,
     margin,
-    verdict: Math.abs(diff) <= margin ? 'too-close' : diff > 0 ? 'b-better' : 'a-better',
+    verdict: Math.abs(diff) <= margin ? 'too-close' : bBetter ? 'b-better' : 'a-better',
   };
+}
+
+/** A headline number as shown in Compare: "123,456" DPS or "42.3 s" to kill. */
+export function formatMetric(d: DpsComparison, n: number): string {
+  return d.metric === 'ttk' ? `${n.toFixed(1)} s` : fmt(n);
 }
 
 /** Fight settings that differ between the runs, as plain sentences. */
@@ -87,9 +101,16 @@ export function fairnessCheck(a: RunRecord, b: RunRecord, enemyName: (key: strin
   const out: string[] = [];
   const da = sa.simulator_settings?.duration;
   const db = sb.simulator_settings?.duration;
-  if (da !== db) out.push(`Fight length differs: A is ${da} s, B is ${db} s.`);
   const ta = sa.target_details ?? [];
   const tb = sb.target_details ?? [];
+  // Enemy HP: fights until the enemy dies (A and/or B) or for a fixed length.
+  const hpA = ta.reduce((x, t) => x + (t.hp ?? 0), 0);
+  const hpB = tb.reduce((x, t) => x + (t.hp ?? 0), 0);
+  if (!hpA !== !hpB) {
+    const kind = (hp: number, d?: number) => (hp ? `until the enemy dies (${fmt(hp)} HP)` : `for a fixed ${d} s`);
+    out.push(`A runs ${kind(hpA, da)}, B runs ${kind(hpB, db)}. Compared by DPS.`);
+  } else if (hpA && hpA !== hpB) out.push(`Enemy HP differs: A is ${fmt(hpA)}, B is ${fmt(hpB)}. Compared by DPS, not time to kill.`);
+  else if (da !== db) out.push(hpA ? `Time limit differs: A is ${da} s, B is ${db} s.` : `Fight length differs: A is ${da} s, B is ${db} s.`);
   if (ta.length !== tb.length) out.push(`Number of enemies differs: A has ${ta.length}, B has ${tb.length}.`);
   const lvA = ta.map((t) => t.level).join(', ');
   const lvB = tb.map((t) => t.level).join(', ');
@@ -226,12 +247,22 @@ export function compareRuns(a: RunRecord, b: RunRecord, enemyName?: (key: string
         }
       : undefined;
 
-  return { dps: compareDps(viewA, viewB), fairness: fairnessCheck(a, b, enemyName), sameTeam, changes: inputChanges(a, b), characters, sources, timeLost, timing, viewA, viewB };
+  const fairness = fairnessCheck(a, b, enemyName);
+  const survivors = [viewA.kill?.someSurvived && 'A', viewB.kill?.someSurvived && 'B'].filter(Boolean);
+  if (survivors.length)
+    fairness.push(`Some fights in ${survivors.join(' and ')} hit the time limit before the enemy died, so the runs are compared by DPS, not time to kill.`);
+  return { dps: compareDps(viewA, viewB), fairness, sameTeam, changes: inputChanges(a, b), characters, sources, timeLost, timing, viewA, viewB };
 }
 
 /** One line for the verdict, e.g. "B is clearly better: +4.2% (+5,712 DPS)". */
 export function verdictText(d: DpsComparison): string {
   const sign = d.diff >= 0 ? '+' : '−';
+  if (d.metric === 'ttk') {
+    const faster = `${Math.abs(d.diff).toFixed(1)} s ${d.diff < 0 ? 'faster' : 'slower'} (${sign}${Math.abs(d.pct * 100).toFixed(1)}%)`;
+    if (d.verdict === 'b-better') return `B is clearly better: it kills ${faster}`;
+    if (d.verdict === 'a-better') return `A is clearly better: B kills ${faster}`;
+    return `Too close to call: B kills ${faster}, within the ±${d.margin.toFixed(1)} s that randomness alone could explain`;
+  }
   const amount = `${sign}${Math.abs(d.pct * 100).toFixed(1)}% (${sign}${fmt(Math.abs(d.diff))} DPS)`;
   if (d.verdict === 'b-better') return `B is clearly better: ${amount}`;
   if (d.verdict === 'a-better') return `A is clearly better: B is ${amount}`;
