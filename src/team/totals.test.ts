@@ -3,7 +3,7 @@ import { loadGameData, type GameData } from '../data/gameData';
 import { sameTeam } from '../teams/model';
 import { statsFromSnapshot } from './baseline';
 import { checkTeam, teamToGcsim } from './gcsim';
-import { artifactsFromTotals, baselineKey, cleanSlot, hasCurrentBaseline, type Slot, type TotalKey } from './model';
+import { artifactsFromTotals, baselineKey, cleanSlot, hasCurrentBaseline, hasSolvedTotals, totalsKey, type Slot, type TotalKey } from './model';
 import { placeholderTeam } from './placeholderTeam.testutil';
 
 let data: GameData;
@@ -19,11 +19,14 @@ beforeAll(async () => {
     statMode: 'totals',
     totals: { hp: 32046, atk: 1158, def: 853, cr: 51.0, cd: 251.7, er: 138.9 },
   };
-  slot = { ...slot, baseline: { key: baselineKey(slot), stats: without } };
+  // What the solver finds for Furina (no stat-converting passives, so total − without).
+  const artifacts: Record<TotalKey, number> = { hp: 16739, atk: 372, def: 157, em: 0, cr: 26.8, cd: 113.5, er: 38.9, 'elem%': 0, 'phys%': 0 };
+  slot = { ...slot, baseline: { key: baselineKey(slot), stats: without, solved: { totals: totalsKey(slot), artifacts } } };
 });
 
 describe('character totals → artifact stats', () => {
-  it('works out artifact stats as total − stats without artifacts, empty totals counting as 0', () => {
+  it('uses the artifact stats worked out for exactly these totals', () => {
+    expect(hasSolvedTotals(slot)).toBe(true);
     const a = artifactsFromTotals(slot)!;
     expect(a.hp).toBe(16739);
     expect(a.atk).toBe(372);
@@ -40,13 +43,18 @@ describe('character totals → artifact stats', () => {
     expect(line).toBe('furina add stats atk%=0 atk=372 hp%=0 hp=16739 def%=0 def=157 em=0 cr=0.268 cd=1.135 er=0.389 hydro%=0 phys%=0;');
   });
 
-  it('waits for a baseline that matches the build, and blocks totals below the baseline', () => {
-    const changed = { ...slot, refinement: 3 }; // a different build: the baseline must be worked out again
+  it('waits for gcsim when the build or the totals change, and blocks totals below the no-artifact stats', () => {
+    const changed = { ...slot, refinement: 3 }; // a different build: everything must be worked out again
     expect(hasCurrentBaseline(changed)).toBe(false);
     expect(artifactsFromTotals(changed)).toBeUndefined();
     expect(checkTeam([changed], data)[0].message).toMatch(/Working out Furina's artifact stats/);
-    const low = { ...slot, totals: { ...slot.totals, atk: 700 } };
-    expect(checkTeam([low], data).find((p) => p.blocking)?.message).toMatch(/total ATK \(700\) is lower than without any artifacts \(786\)/);
+    const retyped = { ...slot, totals: { ...slot.totals, atk: 1200 } }; // same build, new totals
+    expect(hasCurrentBaseline(retyped)).toBe(true);
+    expect(artifactsFromTotals(retyped)).toBeUndefined();
+    const low = { ...retyped, baseline: { ...retyped.baseline!, solved: { totals: totalsKey(retyped), artifacts: { ...retyped.baseline!.solved!.artifacts, atk: -86 } } } };
+    const lowAtk = { ...low, totals: { ...low.totals, atk: 700 } };
+    lowAtk.baseline.solved.totals = totalsKey(lowAtk);
+    expect(checkTeam([lowAtk], data).find((p) => p.blocking)?.message).toMatch(/total ATK \(700\) is lower than without any artifacts \(786\)/);
   });
 
   it('keeps totals and the saved baseline through storage, and the baseline is not counted as a change', () => {

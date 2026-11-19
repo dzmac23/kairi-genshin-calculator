@@ -11,8 +11,8 @@ import { loadGameData, type GameData } from '../data/gameData';
 import { DEFAULT_TOKEN_TABLE, parseTokenTable } from '../rotation/tokens';
 import { measureTiming } from '../rotation/timing';
 import { placeholderTeam } from '../team/placeholderTeam.testutil';
-import { snapshotConfig, statsFromSnapshot } from '../team/baseline';
-import { baselineKey, type Slot } from '../team/model';
+import { getBaseline, snapshotConfig, solveArtifacts, statsFromSnapshot } from '../team/baseline';
+import { type Slot } from '../team/model';
 
 const engineDir = resolve('public/gcsim');
 const hasEngine = existsSync(`${engineDir}/main.wasm`);
@@ -79,35 +79,34 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(Math.abs(dps - 35126) / 35126).toBeLessThan(0.1);
   });
 
-  it('gives the same config from character totals as from the artifact stats they came from', () => {
+  it('gives the same stats from character totals as from the artifact stats they came from', async () => {
     const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
-    const snap = (slot: Slot, withStats: boolean) => {
-      const out = JSON.parse(sample(snapshotConfig(slot, data, withStats), '1'));
+    const engine = async (config: string): Promise<number[]> => {
+      const out = JSON.parse(sample(config, '1'));
       expect(out.error).toBeUndefined();
-      return statsFromSnapshot(out.character_details[0].snapshot, data.character.get(slot.character!)!.element);
+      return out.character_details[0].snapshot;
     };
+    const shown = async (slot: Slot) =>
+      statsFromSnapshot(await engine(snapshotConfig({ ...slot, statMode: 'artifacts' }, data, true)), data.character.get(slot.character!)!.element);
     const original = placeholderTeam(data);
     // Each character's totals as the character screen would show them, then entered as totals.
-    const fromTotals = original.map((slot): Slot => {
-      const withTotals: Slot = { ...slot, statMode: 'totals', totals: snap(slot, true) };
-      return { ...withTotals, baseline: { key: baselineKey(withTotals), stats: snap(slot, false) } };
-    });
-    // Kazuha's totals include Viridescent's 2-piece Anemo bonus, which must not be counted twice.
-    expect(fromTotals[1].totals!['elem%']).toBeCloseTo(15, 1);
-    expect(fromTotals[1].baseline!.stats['elem%']).toBeCloseTo(15, 1);
-    const a = buildConfig(original, data, plan, table, DEFAULT_SETTINGS, 100);
-    const b = buildConfig(fromTotals, data, plan, table, DEFAULT_SETTINGS, 100);
-    expect(b.problems).toEqual([]);
-    const dps = (config: string) => {
-      expect(initializeWorker(config)).toBeNull();
-      expect(error(initializeAggregator(config))).toBeUndefined();
-      for (let i = 0; i < 100; i++) aggregate(simulate() as Uint8Array);
-      return JSON.parse((flush() as { result: string }).result).statistics.dps.mean;
-    };
-    // Only rounding to the game's display precision (0.1%, 1 HP) differs, so DPS stays within 0.5%.
-    const da = dps(a.config!);
-    const db = dps(b.config!);
-    expect(Math.abs(db - da) / da).toBeLessThan(0.005);
+    const fromTotals: Slot[] = [];
+    for (const slot of original) {
+      const typed: Slot = { ...slot, statMode: 'totals', totals: await shown(slot) };
+      fromTotals.push({ ...typed, baseline: await solveArtifacts(typed, data, await getBaseline(typed, data, engine), engine) });
+    }
+    expect(buildConfig(fromTotals, data, plan, table, DEFAULT_SETTINGS, 100).problems).toEqual([]);
+    // Kazuha's Xiphos' Moonlight turns Elemental Mastery into Energy Recharge: the artifacts' 22.04%
+    // ER must come out as 22.04%, not with the weapon's extra ER from the artifacts' EM added.
+    expect(fromTotals[1].baseline!.solved!.artifacts.er).toBeCloseTo(22.04, 0);
+    // Viridescent's 2-piece Anemo bonus is not counted as artifact stats.
+    expect(fromTotals[1].baseline!.solved!.artifacts['elem%']).toBeCloseTo(0, 1);
+    // gcsim shows every character the same totals from the worked-out artifact stats.
+    for (let i = 0; i < original.length; i++) {
+      const fromArtifacts = await shown(original[i]);
+      const solvedSlot: Slot = { ...fromTotals[i], statMode: 'artifacts', artifacts: { ...fromTotals[i].baseline!.solved!.artifacts } };
+      expect(await shown(solvedSlot)).toEqual(fromArtifacts);
+    }
   });
 
   it('runs until the enemy dies when it has HP, and stops at the time limit when it does not die', () => {

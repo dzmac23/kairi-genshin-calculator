@@ -8,6 +8,7 @@ import {
   ARTIFACT_STATS,
   artifactsFromTotals,
   baselineKey,
+  hasCurrentBaseline,
   CHARACTER_LEVELS,
   emptySlot,
   TOTAL_STATS,
@@ -356,7 +357,7 @@ function TotalsEntry({
         <p className="warn small">gcsim couldn't work out this character's stats without artifacts: {error}</p>
       ) : !canSnapshot(slot, data) ? (
         <p className="muted small">Pick a weapon gcsim supports, and the artifact stats will be worked out from these totals.</p>
-      ) : !fromArtifacts ? (
+      ) : !hasCurrentBaseline(slot) ? (
         <p className="muted small">Working out the stats without artifacts…</p>
       ) : (
         <table className="table totals-table">
@@ -371,13 +372,15 @@ function TotalsEntry({
           <tbody>
             {TOTAL_STATS.map((s) => {
               const total = slot.totals?.[s.key];
-              const art = fromArtifacts[s.key] ?? 0;
+              const art = fromArtifacts?.[s.key];
               return (
                 <tr key={s.key}>
                   <td>{label(s.key, s.label)}</td>
                   <td className="num">{total === undefined ? <span className="muted">–</span> : show(total, s.percent)}</td>
                   <td className="num muted">{show(slot.baseline!.stats[s.key], s.percent)}</td>
-                  <td className={art < 0 ? 'num warn' : 'num'}>{total === undefined ? <span className="muted">0</span> : show(art, s.percent)}</td>
+                  <td className={art !== undefined && art < 0 ? 'num warn' : 'num'}>
+                    {art === undefined ? <span className="muted">…</span> : total === undefined ? <span className="muted">0</span> : show(art, s.percent)}
+                  </td>
                 </tr>
               );
             })}

@@ -44,8 +44,21 @@ export const TOTAL_STATS: { key: TotalKey; label: string; percent: boolean }[] =
   { key: 'phys%', label: 'Physical DMG Bonus', percent: true },
 ];
 
-/** gcsim's stats for a build without artifacts, and which build they were worked out for. */
-export type Baseline = { key: string; stats: Record<TotalKey, number> };
+/**
+ * Saved working for character totals: gcsim's stats for the build without artifacts (`stats`),
+ * and the artifact stats that give the typed totals in gcsim (`solved`, for the totals in
+ * `solved.totals`). `key` is the build they were worked out for.
+ */
+export type Baseline = {
+  key: string;
+  stats: Record<TotalKey, number>;
+  solved?: { totals: string; artifacts: Record<TotalKey, number> };
+};
+
+/** The typed totals as a string, to tell whether the solved artifact stats are for them. */
+export function totalsKey(slot: Slot): string {
+  return JSON.stringify(TOTAL_STATS.map(({ key }) => slot.totals?.[key] ?? null));
+}
 
 export type SetChoice =
   | { mode: 'none' }
@@ -80,23 +93,22 @@ export function baselineKey(slot: Slot): string {
   return JSON.stringify({ character, level, constellation, talents, weapon, weaponLevel, refinement, sets });
 }
 
-/** Totals mode with an up-to-date baseline: the artifact stats can be worked out. */
+/** Totals mode with gcsim's stats without artifacts for this build. */
 export function hasCurrentBaseline(slot: Slot): boolean {
   return slot.statMode === 'totals' && slot.baseline?.key === baselineKey(slot);
 }
 
+/** Totals mode with artifact stats worked out for this build and these totals. */
+export function hasSolvedTotals(slot: Slot): boolean {
+  return hasCurrentBaseline(slot) && slot.baseline!.solved?.totals === totalsKey(slot);
+}
+
 /**
- * The artifact part of a typed total (total − stats without artifacts), in the units shown in
- * game. An empty total counts as "nothing from artifacts". Undefined until the baseline is ready.
+ * The artifact stats that give the typed totals in gcsim, in the units shown in game. An empty
+ * total counts as "nothing from artifacts". Undefined until gcsim has worked them out.
  */
 export function artifactsFromTotals(slot: Slot): Partial<Record<TotalKey, number>> | undefined {
-  if (!hasCurrentBaseline(slot)) return undefined;
-  const out: Partial<Record<TotalKey, number>> = {};
-  for (const { key } of TOTAL_STATS) {
-    const total = slot.totals?.[key];
-    out[key] = total === undefined ? 0 : total - slot.baseline!.stats[key];
-  }
-  return out;
+  return hasSolvedTotals(slot) ? slot.baseline!.solved!.artifacts : undefined;
 }
 
 export function emptySlot(): Slot {
@@ -167,9 +179,12 @@ export function cleanSlot(raw: unknown): Slot {
     }
   }
   const b = s.baseline as Baseline | undefined;
+  const statsOk = (x: unknown): x is Record<TotalKey, number> =>
+    !!x && typeof x === 'object' && TOTAL_STATS.every(({ key }) => isNum((x as Record<string, unknown>)[key]));
+  const solved = b?.solved && typeof b.solved.totals === 'string' && statsOk(b.solved.artifacts) ? { totals: b.solved.totals, artifacts: { ...b.solved.artifacts } } : undefined;
   const baseline =
-    b && typeof b === 'object' && typeof b.key === 'string' && b.stats && TOTAL_STATS.every(({ key }) => isNum(b.stats[key]))
-      ? { key: b.key, stats: { ...b.stats } }
+    b && typeof b === 'object' && typeof b.key === 'string' && statsOk(b.stats)
+      ? { key: b.key, stats: { ...b.stats }, ...(solved ? { solved } : {}) }
       : undefined;
   return {
     ...(s.statMode === 'totals' ? { statMode: 'totals' as const, totals, ...(baseline ? { baseline } : {}) } : {}),
