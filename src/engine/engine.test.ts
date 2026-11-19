@@ -127,6 +127,24 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(JSON.stringify(out)).toMatch(/not implemented/);
   });
 
+  it.skipIf(!enginePatches.includes('vodyanitsa'))('simulates Vodyanitsa from patches/vodyanitsa.patch in a Stellar Swirl team, marked incomplete', () => {
+    const team = placeholderTeam(data);
+    const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
+    team[0] = { ...team[0], character: 'Vodyanitsa', weapon: weapon('prototypeamber'), sets: { mode: 'none' }, artifacts: { 'hp%': 100, cr: 50, cd: 100, er: 30 } };
+    team[2] = { ...team[2], character: 'Sandrone', weapon: weapon('wolfsgravestone'), sets: { mode: 'none' }, artifacts: { 'atk%': 50, cr: 60, cd: 120 } };
+    const loop = { opener: '', loop: 'Sandrone E N2 > Kazuha tE P > Vodyanitsa E Q N3 > Xilonen E N5 Q' };
+    const built = buildConfig(team, data, loop, table, DEFAULT_SETTINGS, 20);
+    expect(built.problems).toEqual([]);
+    expect(built.config).toContain('vodyanitsa char lvl=');
+    expect(error(initializeAggregator(built.config!))).toBeUndefined();
+    expect(initializeWorker(built.config!)).toBeNull();
+    for (let i = 0; i < 20; i++) aggregate(simulate() as Uint8Array);
+    const result = JSON.parse((flush() as { result: string }).result);
+    const vody = result.character_details.findIndex((c: { name: string }) => c.name === 'vodyanitsa');
+    expect(result.statistics.character_dps[vody].mean).toBeGreaterThan(0);
+    expect(result.incomplete_characters).toContain('vodyanitsa');
+  });
+
   it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {
     const furina = placeholderTeam(data)[2];
     const hpAt = (level: string) => {
