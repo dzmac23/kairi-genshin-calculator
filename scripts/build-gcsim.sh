@@ -24,7 +24,7 @@ out="$repo_root/public/gcsim"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 
 src="${GCSIM_SRC:-$repo_root/.cache/gcsim-$tag}"
-if [ ! -d "$src/.git" ]; then
+if [ ! -e "$src/.git" ]; then  # a folder, or a file in a linked checkout
   echo "Cloning gcsim $tag into $src"
   git clone --quiet --depth 1 --branch "$tag" https://github.com/genshinsim/gcsim "$src"
 fi
@@ -46,6 +46,9 @@ patches=()
 for patch in "$repo_root"/patches/*.patch; do
   [ -e "$patch" ] || continue
   name="$(basename "$patch" .patch)"
+  # The character or weapon folder the patch adds (e.g. internal/characters/linnea or
+  # internal/weapons/catalyst/starsealed): if gcsim already has it, gcsim includes it itself.
+  adds="$(grep -m1 -oE '^\+\+\+ b/internal/(characters|weapons/[a-z]+)/[a-z0-9]+/' "$patch" | sed -e 's#^+++ b/##' -e 's#/$##' || true)"
   if git -C "$src" apply --reverse --check "$patch" 2>/dev/null; then
     echo "Patch $name: already applied"
     patches+=("$name")
@@ -53,10 +56,10 @@ for patch in "$repo_root"/patches/*.patch; do
     git -C "$src" apply "$patch"
     echo "Patch $name: applied"
     patches+=("$name")
-  elif [ -d "$src/internal/characters/$name" ]; then
-    echo "Patch $name: skipped, gcsim $tag already includes $name. Delete patches/$name.patch and update data/characters.json."
+  elif [ -n "$adds" ] && [ -d "$src/$adds" ]; then
+    echo "Patch $name: skipped, gcsim $tag already includes it ($adds). Delete patches/$name.patch and remove gcsim_patch from data/characters.json or data/weapons.json."
   else
-    echo "Patch $name doesn't apply to gcsim $tag, and gcsim doesn't include $name yet:" >&2
+    echo "Patch $name doesn't apply to gcsim $tag, and gcsim doesn't include it yet (${adds:-unknown folder}):" >&2
     git -C "$src" apply --check "$patch" >&2 || true
     echo "Update patches/$name.patch for this gcsim version (see patches/README.md)." >&2
     exit 1

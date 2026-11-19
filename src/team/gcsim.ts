@@ -85,6 +85,12 @@ export function checkTeam(team: Team, data: GameData): TeamProblem[] {
       problems.push({ slot: i, message: `${weapon.name} is not in gcsim yet; pick another weapon.`, blocking: true });
     } else if (weapon.type !== character.weapon_type) {
       problems.push({ slot: i, message: `${character.name} can't use a ${weapon.type.toLowerCase()}.`, blocking: true });
+    } else if (weapon.gcsim_patch) {
+      problems.push({
+        slot: i,
+        message: `${weapon.name} is experimental: gcsim doesn't include it yet, so this app adds it from an unfinished gcsim pull request (see patches/${weapon.gcsim_patch}.patch). Results may not match the game.`,
+        blocking: false,
+      });
     }
     if (slot.statMode === 'totals' && weapon?.gcsim_key) {
       const fromArtifacts = artifactsFromTotals(slot);

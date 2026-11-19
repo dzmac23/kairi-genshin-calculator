@@ -151,7 +151,7 @@ function SlotEditor({
           value: w.name,
           label: w.name,
           hint: `${w.rarity}★ ${w.substat ?? 'no substat'}`,
-          warning: w.gcsim_key ? undefined : 'Not in gcsim yet',
+          warning: w.gcsim_key ? (w.gcsim_patch ? 'Experimental' : undefined) : 'Not in gcsim yet',
         })),
     [data, character],
   );
@@ -222,6 +222,12 @@ function SlotEditor({
 
           <h3>Weapon</h3>
           <Picker label={`Weapon (${character.weapon_type.toLowerCase()})`} value={slot.weapon} options={weaponOptions} onChange={(w) => set({ weapon: w })} />
+          {weapon?.gcsim_patch && (
+            <p className="warn small">
+              Experimental: gcsim doesn't include {weapon.name} yet, so this app adds it from an unfinished gcsim pull request. Results may
+              not match the game.
+            </p>
+          )}
           {weapon && (
             <div className="row">
               <LevelInput label="Weapon level" value={slot.weaponLevel} max={MAX_WEAPON_LEVEL} onChange={(weaponLevel) => set({ weaponLevel })} />

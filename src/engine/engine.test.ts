@@ -145,6 +145,29 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(result.incomplete_characters).toContain('vodyanitsa');
   });
 
+  it.skipIf(!enginePatches.includes('starsealed'))('simulates Starsealed Edict from patches/starsealed.patch', () => {
+    const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
+    const run = (weapon: string) => {
+      const team = placeholderTeam(data);
+      team[0] = { ...team[0], weapon };
+      const built = buildConfig(team, data, plan, table, DEFAULT_SETTINGS, 1);
+      expect(built.problems).toEqual([]);
+      const out = JSON.parse(sample(built.config!, '1'));
+      expect(out.error).toBeUndefined();
+      return out.character_details[0].snapshot as number[];
+    };
+    // Sacrificial Jade has a CRIT Rate substat and no CRIT DMG passive. Starsealed Edict has a CRIT DMG
+    // substat and a passive "Increases CRIT DMG by 24%" at refinement 1. So Neuvillette's CRIT DMG
+    // (snapshot index 10) with the Edict is his CRIT DMG with Jade + the level-90 substat + 24%,
+    // both taken from the game data (data/weapons.json).
+    const edict = data.weapon.get('Starsealed Edict')!;
+    const substat = edict.stats.find((x) => x.level === '90')!.substat_value!;
+    const passiveR1 = parseFloat(edict.refinement_values![0][0]) / 100;
+    const withEdict = run(edict.name);
+    const withJade = run(placeholderTeam(data)[0].weapon!);
+    expect(withEdict[10] - withJade[10]).toBeCloseTo(substat + passiveR1, 4);
+  });
+
   it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {
     const furina = placeholderTeam(data)[2];
     const hpAt = (level: string) => {

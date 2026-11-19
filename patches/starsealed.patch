@@ -1,0 +1,340 @@
+Starsealed Edict (5★ catalyst) for gcsim, from an unmerged gcsim pull request.
+
+Source: https://github.com/genshinsim/gcsim/pull/3279 by Lou Chauvin, at commit 2b3320f (2026-11-19,
+        after "fix issues from review"), based on gcsim v2.50.0.
+Not reviewed or accepted by gcsim's maintainers yet: results with this weapon are experimental.
+
+Only the weapon is taken: its folder (internal/weapons/catalyst/starsealed) and its lines in gcsim's
+weapon lists (catalog, keys, shortcuts "starsealededict"/"edict"/"starsealed", imports, assets). The
+pull request's branch also contains three unrelated fixes gcsim merged after v2.50.0 (Mizuki C2,
+Mavuika's bike frames, Nocturne's Curtain Call); those are left out and will come with the next
+gcsim release. The website files (ui/) are left out too. No other changes.
+
+This file is applied by scripts/build-gcsim.sh. When gcsim includes Starsealed Edict itself, the
+build skips it and says so; then delete this file.
+
+diff --git a/internal/services/assets/weapon.dm.go b/internal/services/assets/weapon.dm.go
+index 47cc67b59..58e97d61b 100644
+--- a/internal/services/assets/weapon.dm.go
++++ b/internal/services/assets/weapon.dm.go
+@@ -206,6 +206,7 @@ var weaponMap = map[string]string{
+ 	"staffofhoma":                     "UI_EquipIcon_Pole_Homa_Awaken",
+ 	"staffofthescarletsands":          "UI_EquipIcon_Pole_Deshret_Awaken",
+ 	"starcallerswatch":                "UI_EquipIcon_Catalyst_Figurines_Awaken",
++	"starsealededict":                 "UI_EquipIcon_Catalyst_Chernaya_Awaken",
+ 	"sturdybone":                      "UI_EquipIcon_Sword_Umpakati_Awaken",
+ 	"summitshaper":                    "UI_EquipIcon_Sword_Kunwu_Awaken",
+ 	"sunnymorningsleepin":             "UI_EquipIcon_Catalyst_SakuraFan_Awaken",
+diff --git a/internal/weapons/catalyst/starsealed/config.yml b/internal/weapons/catalyst/starsealed/config.yml
+new file mode 100644
+index 000000000..b374bc908
+--- /dev/null
++++ b/internal/weapons/catalyst/starsealed/config.yml
+@@ -0,0 +1,18 @@
++use: pipeline
++kind: weapon
++name: starsealededict
++
++shortcuts:
++  - starsealed
++  - edict
++
++talents:
++  # Increases CRIT DMG by 24%. The equipping character gains the Crystal Compounding
++  # effect when they use their Elemental Skill, increasing Elemental Mastery by 48 for
++  # 20s. During this time, the equipping character gains a Law of Combustion stack when
++  # a nearby party member triggers an Elemental Reaction. Each stack increases Elemental
++  # Mastery by an additional 24. Max 3 stacks. These stacks last until Crystal Compounding
++  # ends or the equipping character uses their Elemental Skill again.
++  # Radiance: Stellar-Conduct: Each Law of Combustion stack also increases the equipping
++  # character's Stellar-Conduct CRIT DMG by 12%.
++  # These effects can be triggered even when the equipping character is off-field.
+diff --git a/internal/weapons/catalyst/starsealed/starsealed.go b/internal/weapons/catalyst/starsealed/starsealed.go
+new file mode 100644
+index 000000000..123bfb696
+--- /dev/null
++++ b/internal/weapons/catalyst/starsealed/starsealed.go
+@@ -0,0 +1,109 @@
++package starsealed
++
++import (
++	"fmt"
++
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++	"github.com/genshinsim/gcsim/pkg/reactable"
++)
++
++type Weapon struct {
++	Index  int
++	stacks int
++	char   *character.CharWrapper
++}
++
++const (
++	skillembuff = "starsealed-em-buff"
++)
++
++func (w *Weapon) SetIndex(idx int) { w.Index = idx }
++func (w *Weapon) Init() error      { return nil }
++
++func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
++	w := &Weapon{char: char}
++	multiplier := 0.75 + (0.25 * float64(p.Refine))
++	critdmg := 0.24 * multiplier
++	skillem := 48 * multiplier
++	stackem := 24 * multiplier
++	stackssccd := 0.12 * multiplier
++	constantCD := make([]float64, attributes.EndStatType)
++	constantCD[attributes.CD] = critdmg
++	skillEM := make([]float64, attributes.EndStatType)
++
++	char.AddStatMod(character.StatMod{
++		Base: modifier.NewBase("Starsealed-cd", -1),
++		Amount: func() []float64 {
++			return constantCD
++		},
++	})
++
++	c.Events.Subscribe(event.OnSkill, func(args ...any) {
++		// don't proc if someone else used a skill
++		if c.Player.Active() != char.Index() {
++			return
++		}
++		// clear stacks
++		w.stacks = 0
++		// readds the buff if already active - refreshes it
++		char.AddStatMod(character.StatMod{
++			Base: modifier.NewBaseWithHitlag(skillembuff, 20*60),
++			Amount: func() []float64 {
++				skillEM[attributes.EM] = skillem + stackem*float64(w.stacks)
++				return skillEM
++			},
++		})
++	}, "starsealed-on-skill-"+char.Base.Key.String())
++
++	onReaction := func(args ...any) {
++		// no stacks if the buff is not active
++		if !char.StatModIsActive(skillembuff) {
++			return
++		}
++		// adds stack on team reaction, max 3 stacks
++		if w.stacks < 3 {
++			w.stacks++
++		}
++	}
++	// activates the stacking function when a reaction happens
++	for e := event.ReactionEventStartDelim + 1; e < event.ReactionEventEndDelim; e++ {
++		c.Events.Subscribe(
++			e,
++			onReaction,
++			fmt.Sprintf("starsealed-reaction-%s-%d", char.Base.Key.String(), e),
++		)
++	}
++	// adds the stacking SSC crit dmg
++	sscCrit := make([]float64, attributes.EndStatType)
++	char.AddAttackMod(character.AttackMod{
++		Base: modifier.NewBaseWithHitlag("starsealed-ssc-crit", -1),
++		Amount: func(atk *info.AttackEvent, _ info.Target) []float64 {
++			if !char.StatModIsActive(skillembuff) {
++				return nil
++			}
++			if !w.isStellarRadiance() {
++				return nil
++			}
++			if atk.Info.AttackTag != attacks.AttackTagDirectStellarConduct {
++				return nil
++			}
++			if w.stacks == 0 {
++				return nil
++			}
++			sscCrit[attributes.CD] = stackssccd * float64(w.stacks)
++			return sscCrit
++		},
++	})
++
++	return w, nil
++}
++
++func (w *Weapon) isStellarRadiance() bool {
++	return w.char.StatusIsActive(reactable.PolestarFieldKey)
++}
+diff --git a/internal/weapons/catalyst/starsealed/zz_starsealededict.dm.go b/internal/weapons/catalyst/starsealed/zz_starsealededict.dm.go
+new file mode 100644
+index 000000000..f1b7eeef7
+--- /dev/null
++++ b/internal/weapons/catalyst/starsealed/zz_starsealededict.dm.go
+@@ -0,0 +1,23 @@
++// Code generated by "pipeline"; DO NOT EDIT.
++
++// passive: Dawnstar's Flowing Trail # Weapon_Catalyst_Chernaya
++//
++//	Increases CRIT DMG by 24%. The equipping character gains the Crystal Compounding
++//	effect when they use their Elemental Skill, increasing Elemental Mastery by 48 for
++//	20s. During this time, the equipping character gains a Law of Combustion stack when
++//	a nearby party member triggers an Elemental Reaction. Each stack increases Elemental
++//	Mastery by an additional 24. Max 3 stacks. These stacks last until Crystal Compounding
++//	ends or the equipping character uses their Elemental Skill again.
++//	Radiance: Stellar-Conduct: Each Law of Combustion stack also increases the equipping
++//	character's Stellar-Conduct CRIT DMG by 12%.
++//	These effects can be triggered even when the equipping character is off-field.
++package starsealed
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/keys"
++)
++
++func init() {
++	core.RegisterWeaponFunc(keys.StarsealedEdict, NewWeapon)
++}
+diff --git a/pkg/catalog/weapon.dm.go b/pkg/catalog/weapon.dm.go
+index 310952a85..9f81fe226 100644
+--- a/pkg/catalog/weapon.dm.go
++++ b/pkg/catalog/weapon.dm.go
+@@ -16041,6 +16041,86 @@ var WeaponMap = map[keys.Weapon]*model.WeaponData{
+ 			},
+ 		},
+ 	},
++	keys.StarsealedEdict: {
++		Id:          14525,
++		Key:         "starsealededict",
++		Rarity:      5,
++		WeaponClass: model.WeaponType_WEAPON_CATALYST,
++		ImageName:   "UI_EquipIcon_Catalyst_Chernaya_Awaken",
++		BaseStats: &model.WeaponStatsData{
++			BaseProps: []*model.WeaponProp{
++				{
++					PropType:     model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++					InitialValue: 44.3358,
++					Curve:        model.GrowCurveType_GROW_CURVE_ATTACK_304,
++				},
++				{
++					PropType:     model.FightPropType_FIGHT_PROP_CRITICAL_HURT,
++					InitialValue: 0.192,
++					Curve:        model.GrowCurveType_GROW_CURVE_CRITICAL_301,
++				},
++			},
++			PromoData: []*model.PromotionData{
++				{
++					MaxLevel: 20,
++				},
++				{
++					MaxLevel: 40,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    31.1,
++						},
++					},
++				},
++				{
++					MaxLevel: 50,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    62.2,
++						},
++					},
++				},
++				{
++					MaxLevel: 60,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    93.4,
++						},
++					},
++				},
++				{
++					MaxLevel: 70,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    124.5,
++						},
++					},
++				},
++				{
++					MaxLevel: 80,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    155.6,
++						},
++					},
++				},
++				{
++					MaxLevel: 90,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    186.7,
++						},
++					},
++				},
++			},
++		},
++	},
+ 	keys.SturdyBone: {
+ 		Id:          11430,
+ 		Key:         "sturdybone",
+diff --git a/pkg/core/keys/weapon.dm.go b/pkg/core/keys/weapon.dm.go
+index 7bbf60243..b6e67cbde 100644
+--- a/pkg/core/keys/weapon.dm.go
++++ b/pkg/core/keys/weapon.dm.go
+@@ -246,6 +246,7 @@ const (
+ 	StaffOfHoma                                   // staffofhoma
+ 	StaffOfTheScarletSands                        // staffofthescarletsands
+ 	StarcallersWatch                              // starcallerswatch
++	StarsealedEdict                               // starsealededict
+ 	SturdyBone                                    // sturdybone
+ 	SummitShaper                                  // summitshaper
+ 	SunnyMorningSleepIn                           // sunnymorningsleepin
+@@ -502,6 +503,7 @@ var _WeaponNames = [...]string{
+ 	"staffofhoma",
+ 	"staffofthescarletsands",
+ 	"starcallerswatch",
++	"starsealededict",
+ 	"sturdybone",
+ 	"summitshaper",
+ 	"sunnymorningsleepin",
+@@ -758,6 +760,7 @@ var _WeaponValues = [...]Weapon{
+ 	StaffOfHoma,
+ 	StaffOfTheScarletSands,
+ 	StarcallersWatch,
++	StarsealedEdict,
+ 	SturdyBone,
+ 	SummitShaper,
+ 	SunnyMorningSleepIn,
+diff --git a/pkg/shortcut/weapon.dm.go b/pkg/shortcut/weapon.dm.go
+index f005172db..10e30abd6 100644
+--- a/pkg/shortcut/weapon.dm.go
++++ b/pkg/shortcut/weapon.dm.go
+@@ -362,6 +362,9 @@ var WeaponNameToKey = map[string]keys.Weapon{
+ 	"sss":                             keys.StaffOfTheScarletSands,
+ 	"starcallerswatch":                keys.StarcallersWatch,
+ 	"scw":                             keys.StarcallersWatch,
++	"starsealededict":                 keys.StarsealedEdict,
++	"edict":                           keys.StarsealedEdict,
++	"starsealed":                      keys.StarsealedEdict,
+ 	"sturdybone":                      keys.SturdyBone,
+ 	"summitshaper":                    keys.SummitShaper,
+ 	"summit":                          keys.SummitShaper,
+diff --git a/pkg/simulation/imports.weapon.dm.go b/pkg/simulation/imports.weapon.dm.go
+index 06fc95e9a..fc66564f9 100644
+--- a/pkg/simulation/imports.weapon.dm.go
++++ b/pkg/simulation/imports.weapon.dm.go
+@@ -96,6 +96,7 @@ import (
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/skyward"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/solar"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/starcallerswatch"
++	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/starsealed"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/sunnymorning"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/surfsup"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/thrilling"

@@ -20289,7 +20289,7 @@
     "24%"
    ]
   ],
-  "gcsim_key": null,
+  "gcsim_key": "starsealededict",
   "stats": [
    {
     "level": "1",
@@ -20361,7 +20361,8 @@
     "base_atk": 541.829758,
     "substat_value": 0.882048
    }
-  ]
+  ],
+  "gcsim_patch": "starsealed"
  },
  {
   "name": "Sturdy Bone",
