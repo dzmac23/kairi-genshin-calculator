@@ -55,9 +55,18 @@ describe('gcsim v2.50.0 support', () => {
     expect(unsupported).toEqual(['Kachina', 'Lohen', 'Mitya', 'Valeriy', 'Vesna']);
     const patched = data.characters.filter((c) => c.gcsim_patch).map((c) => `${c.name}: patches/${c.gcsim_patch}.patch`);
     expect(patched).toEqual(['Linnea: patches/linnea.patch', 'Nefer: patches/nefer.patch', 'Vodyanitsa: patches/vodyanitsa.patch']);
-    // Every patch in patches/ has a character, and every patched character has a patch file.
+    // Every patch in patches/ belongs to a character or weapon, and every patched one has a patch file.
     const files = readdirSync('patches').filter((f) => f.endsWith('.patch')).map((f) => f.replace('.patch', ''));
-    expect(files.sort()).toEqual(data.characters.filter((c) => c.gcsim_patch).map((c) => c.gcsim_patch).sort());
+    const owners = [...data.characters, ...data.weapons].filter((x) => x.gcsim_patch).map((x) => x.gcsim_patch);
+    expect(files.sort()).toEqual(owners.sort());
+    expect(data.weapons.filter((w) => w.gcsim_patch).map((w) => `${w.name}: patches/${w.gcsim_patch}.patch`)).toEqual(['Starsealed Edict: patches/starsealed.patch']);
+  });
+
+  it('warns that a patched weapon is experimental, without blocking a run', () => {
+    const t: Team = [{ ...team[0], weapon: 'Starsealed Edict' }]; // Neuvillette uses catalysts
+    const p = checkTeam(t, data).find((x) => x.message.includes('Starsealed Edict is experimental'));
+    expect(p).toMatchObject({ slot: 0, blocking: false });
+    expect(teamToGcsim(t, data)).toContain('neuvillette add weapon="starsealededict" refine=1 lvl=90/90;');
   });
 
   it('warns that a patched character is experimental, without blocking a run', () => {

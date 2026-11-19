@@ -33,6 +33,10 @@ export type Weapon = {
   substat: string | null; // "CRIT Rate"
   passive_name?: string;
   gcsim_key: string | null;
+  /** Set when gcsim only has this weapon through a patch in patches/: results are experimental. */
+  gcsim_patch?: string;
+  /** The passive's values per refinement (R1 first), as text from the game data, e.g. ["24%", "48"]. */
+  refinement_values?: string[][];
   stats: { level: LevelKey; base_atk: number; substat_value: number | null }[];
 };
 
