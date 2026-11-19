@@ -246,3 +246,41 @@ export class SimPool {
     }
   }
 }
+
+// A separate engine for small jobs on the Team screen (a character's stats without artifacts), so
+// they never wait for, or get in the way of, a simulation run. It stops after a minute unused, to
+// give the memory back.
+let helper: { worker: EngineWorker; ready: Promise<unknown> } | undefined;
+let helperTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** gcsim's stats for the first character of a config at the start of a fight (its snapshot). */
+export async function characterSnapshot(config: string): Promise<number[]> {
+  if (!helper) {
+    const worker = new EngineWorker();
+    const ready = compileEngine().then((module) => worker.call({ type: 'load', module }));
+    helper = { worker, ready };
+    worker.onFatal = () => {
+      worker.terminate(new Error('stopped'));
+      if (helper?.worker === worker) helper = undefined;
+    };
+  }
+  const h = helper;
+  clearTimeout(helperTimer);
+  try {
+    await h.ready;
+    const reply = await h.worker.call({ type: 'snapshot', config });
+    return reply.snapshot ?? [];
+  } catch (error) {
+    // A failed start can be retried with a fresh engine.
+    if (helper === h && !(error instanceof ConfigError)) {
+      h.worker.terminate(new Error('stopped'));
+      helper = undefined;
+    }
+    throw error;
+  } finally {
+    helperTimer = setTimeout(() => {
+      helper?.worker.terminate(new Error('stopped'));
+      helper = undefined;
+    }, 60_000);
+  }
+}

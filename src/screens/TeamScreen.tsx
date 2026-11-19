@@ -1,15 +1,30 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
 import { useGameData, type GameData, type LevelKey } from '../data/gameData';
 import { checkTeam, teamToGcsim } from '../team/gcsim';
-import { ARTIFACT_STATS, CHARACTER_LEVELS, emptySlot, WEAPON_LEVELS, type Slot, type Team } from '../team/model';
+import { canSnapshot, totalsFromArtifacts } from '../team/baseline';
+import {
+  ARTIFACT_STATS,
+  artifactsFromTotals,
+  baselineKey,
+  hasCurrentBaseline,
+  CHARACTER_LEVELS,
+  emptySlot,
+  TOTAL_STATS,
+  WEAPON_LEVELS,
+  type Slot,
+  type Team,
+  type TotalKey,
+} from '../team/model';
 import { computeStats } from '../team/stats';
 import { Confirm } from './SavedTeams';
 
 type Props = {
   team: Team;
-  onChange: (team: Team) => void;
+  onChange: Dispatch<SetStateAction<Team>>;
+  /** gcsim errors while working out stats without artifacts, by build (see team/useBaselines.ts). */
+  baselineErrors?: Record<string, string>;
   /** Empties all four slots (and unlinks the saved team). */
   onClear: () => void;
   /** Clearing would lose unsaved work, so ask first. */
@@ -20,7 +35,7 @@ type Props = {
 
 const TALENT_NAMES = ['Normal Attack', 'Elemental Skill', 'Elemental Burst'];
 
-export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm, saveBar }: Props) {
+export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm, saveBar, baselineErrors = {} }: Props) {
   const data = useGameData();
   const [active, setActive] = useState(0);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -35,6 +50,8 @@ export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm,
   }
 
   const updateSlot = (i: number, slot: Slot) => onChange(team.map((s, j) => (j === i ? slot : s)));
+  // For changes that arrive later (worked out by gcsim): applied to the slot as it is by then.
+  const patchSlot = (i: number, change: (s: Slot) => Slot) => onChange((t) => t.map((s, j) => (j === i ? change(s) : s)));
   const problems = checkTeam(team, data);
 
   return (
@@ -81,14 +98,36 @@ export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm,
         </div>
       </section>
 
-      <SlotEditor key={active} index={active} slot={team[active]} data={data} onChange={(s) => updateSlot(active, s)} />
+      <SlotEditor
+        key={active}
+        index={active}
+        slot={team[active]}
+        data={data}
+        onChange={(s) => updateSlot(active, s)}
+        onPatch={(change) => patchSlot(active, change)}
+        baselineError={baselineErrors[baselineKey(team[active])]}
+      />
 
       <TeamSummary team={team} data={data} problems={problems} />
     </>
   );
 }
 
-function SlotEditor({ index, slot, data, onChange }: { index: number; slot: Slot; data: GameData; onChange: (s: Slot) => void }) {
+function SlotEditor({
+  index,
+  slot,
+  data,
+  onChange,
+  onPatch,
+  baselineError,
+}: {
+  index: number;
+  slot: Slot;
+  data: GameData;
+  onChange: (s: Slot) => void;
+  onPatch: (change: (s: Slot) => Slot) => void;
+  baselineError?: string;
+}) {
   const character = slot.character ? data.character.get(slot.character) : undefined;
   const weapon = slot.weapon ? data.weapon.get(slot.weapon) : undefined;
   const set = (patch: Partial<Slot>) => onChange({ ...slot, ...patch });
@@ -203,27 +242,152 @@ function SlotEditor({ index, slot, data, onChange }: { index: number; slot: Slot
             </>
           )}
 
-          <h3>Artifact stats</h3>
-          <p className="muted small">
-            Totals across all five artifacts, main stats and substats added together. Type percentages as shown in game
-            (33.1 for 33.1%). Leave a box empty for 0.
-          </p>
-          <div className="stat-grid">
-            {ARTIFACT_STATS.map((s) => (
-              <NumberField
-                key={s.key}
-                label={s.key === 'elem%' ? `${character.element} DMG Bonus` : s.label}
-                suffix={s.percent ? '%' : ''}
-                value={slot.artifacts[s.key]}
-                onChange={(v) => set({ artifacts: { ...slot.artifacts, [s.key]: v } })}
-              />
-            ))}
-          </div>
-
-          <StatTotals slot={slot} data={data} />
+          <h3>Stats</h3>
+          <StatModeSwitch slot={slot} data={data} onChange={onChange} onPatch={onPatch} />
+          {slot.statMode === 'totals' ? (
+            <TotalsEntry slot={slot} data={data} element={character.element} set={set} error={baselineError} />
+          ) : (
+            <>
+              <p className="muted small">
+                Totals across all five artifacts, main stats and substats added together. Type percentages as shown in
+                game (33.1 for 33.1%). Leave a box empty for 0.
+              </p>
+              <div className="stat-grid">
+                {ARTIFACT_STATS.map((s) => (
+                  <NumberField
+                    key={s.key}
+                    label={s.key === 'elem%' ? `${character.element} DMG Bonus` : s.label}
+                    suffix={s.percent ? '%' : ''}
+                    value={slot.artifacts[s.key]}
+                    onChange={(v) => set({ artifacts: { ...slot.artifacts, [s.key]: v } })}
+                  />
+                ))}
+              </div>
+              <StatTotals slot={slot} data={data} />
+            </>
+          )}
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Artifact stats or character totals. Switching fills the other boxes in when they're empty: to
+ * totals, with the totals gcsim works out from the artifact stats; to artifact stats, with what
+ * the totals give (all as flat HP/ATK/DEF, which gcsim treats the same as % plus flat).
+ */
+function StatModeSwitch({ slot, data, onChange, onPatch }: { slot: Slot; data: GameData; onChange: (s: Slot) => void; onPatch: (change: (s: Slot) => Slot) => void }) {
+  const mode = slot.statMode ?? 'artifacts';
+  const [filling, setFilling] = useState(false);
+  const choose = (next: 'artifacts' | 'totals') => {
+    if (next === mode) return;
+    if (next === 'totals') {
+      const emptyTotals = !slot.totals || Object.keys(slot.totals).length === 0;
+      const hasArtifacts = Object.values(slot.artifacts).some((v) => v);
+      onChange({ ...slot, statMode: 'totals', totals: slot.totals ?? {} });
+      if (emptyTotals && hasArtifacts && canSnapshot(slot, data)) {
+        setFilling(true);
+        totalsFromArtifacts(slot, data)
+          .then((totals) => onPatch((s) => (s.statMode === 'totals' && (!s.totals || Object.keys(s.totals).length === 0) ? { ...s, totals } : s)))
+          .catch(() => {})
+          .finally(() => setFilling(false));
+      }
+    } else {
+      const derived = artifactsFromTotals(slot);
+      const emptyArtifacts = !Object.values(slot.artifacts).some((v) => v);
+      const artifacts: Slot['artifacts'] =
+        emptyArtifacts && derived
+          ? Object.fromEntries(Object.entries(derived).map(([k, v]) => [k, Math.round((v ?? 0) * 10) / 10]))
+          : slot.artifacts;
+      onChange({ ...slot, statMode: 'artifacts', artifacts });
+    }
+  };
+  return (
+    <>
+      <Segmented
+        label="Enter"
+        value={mode}
+        values={['artifacts', 'totals'] as const}
+        names={{ artifacts: 'Artifact stats', totals: 'Character totals' }}
+        onChange={choose}
+      />
+      {filling && <p className="muted small">Filling in the totals from your artifact stats…</p>}
+    </>
+  );
+}
+
+/** Character totals (from the character screen or Hoyolab) and the artifact stats worked out from them. */
+function TotalsEntry({
+  slot,
+  data,
+  element,
+  set,
+  error,
+}: {
+  slot: Slot;
+  data: GameData;
+  element: string;
+  set: (patch: Partial<Slot>) => void;
+  error?: string;
+}) {
+  const fromArtifacts = artifactsFromTotals(slot);
+  const label = (key: TotalKey, l: string) => (key === 'elem%' ? `${element} DMG Bonus` : l);
+  const show = (v: number, percent: boolean) => (percent ? `${v.toFixed(1)}%` : Math.round(v).toLocaleString());
+  return (
+    <>
+      <p className="muted small">
+        Type the character's total stats as the character screen or Hoyolab shows them (51.0 for 51.0%). gcsim works out
+        what this character has without artifacts (level, ascension, weapon, 2-piece set bonuses, passives), and the rest
+        counts as artifact stats. Level, constellation, weapon, refinement and sets above must be right. Leave a box empty
+        if artifacts add nothing to it.
+      </p>
+      <div className="stat-grid">
+        {TOTAL_STATS.map((s) => (
+          <NumberField
+            key={s.key}
+            label={label(s.key, s.label)}
+            suffix={s.percent ? '%' : ''}
+            value={slot.totals?.[s.key]}
+            onChange={(v) => set({ totals: { ...slot.totals, [s.key]: v } })}
+          />
+        ))}
+      </div>
+      {error ? (
+        <p className="warn small">gcsim couldn't work out this character's stats without artifacts: {error}</p>
+      ) : !canSnapshot(slot, data) ? (
+        <p className="muted small">Pick a weapon gcsim supports, and the artifact stats will be worked out from these totals.</p>
+      ) : !hasCurrentBaseline(slot) ? (
+        <p className="muted small">Working out the stats without artifacts…</p>
+      ) : (
+        <table className="table totals-table">
+          <thead>
+            <tr>
+              <th>Stat</th>
+              <th className="num">Total</th>
+              <th className="num">No artifacts</th>
+              <th className="num">Artifacts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {TOTAL_STATS.map((s) => {
+              const total = slot.totals?.[s.key];
+              const art = fromArtifacts?.[s.key];
+              return (
+                <tr key={s.key}>
+                  <td>{label(s.key, s.label)}</td>
+                  <td className="num">{total === undefined ? <span className="muted">–</span> : show(total, s.percent)}</td>
+                  <td className="num muted">{show(slot.baseline!.stats[s.key], s.percent)}</td>
+                  <td className={art !== undefined && art < 0 ? 'num warn' : 'num'}>
+                    {art === undefined ? <span className="muted">…</span> : total === undefined ? <span className="muted">0</span> : show(art, s.percent)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }
 

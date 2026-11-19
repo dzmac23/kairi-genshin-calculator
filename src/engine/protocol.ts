@@ -19,9 +19,11 @@ export type WorkerRequest =
   /** Aggregator: produce the result for everything added so far. */
   | { id: number; type: 'flush' }
   /** Replay one fight with sample() and send back only the rotation timing markers (rotation/timing.ts). */
-  | { id: number; type: 'markers'; config: string; seed: string };
+  | { id: number; type: 'markers'; config: string; seed: string }
+  /** Replay one short fight and send back the first character's stats at the start (gcsim's snapshot). */
+  | { id: number; type: 'snapshot'; config: string };
 
 export type WorkerReply =
-  | { id: number; ok: true; summary?: Uint8Array; result?: string; markers?: { frame: number; msg: string }[]; endFrame?: number }
+  | { id: number; ok: true; summary?: Uint8Array; result?: string; markers?: { frame: number; msg: string }[]; endFrame?: number; snapshot?: number[] }
   /** fatal means the engine in this worker has crashed and the worker must be replaced. */
   | { id: number; ok: false; error: string; fatal: boolean };

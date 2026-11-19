@@ -70,6 +70,12 @@ async function handle(req: WorkerRequest): Promise<Omit<Extract<WorkerReply, { o
         endFrame: logs.reduce((a, l) => Math.max(a, l.frame), 0),
       };
     }
+    case 'snapshot': {
+      const out = sample(req.config, '1');
+      throwIfError(out);
+      const details: { snapshot?: number[] }[] = JSON.parse(out).character_details ?? [];
+      return { snapshot: details[0]?.snapshot ?? [] };
+    }
     case 'flush': {
       const flushed = flush();
       throwIfError(flushed);

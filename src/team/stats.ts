@@ -5,7 +5,7 @@
 // team buffs: gcsim applies all of those itself during the simulation.
 
 import type { Character, Weapon } from '../data/gameData';
-import type { ArtifactStatKey, Slot } from './model';
+import { artifactsFromTotals, type ArtifactStatKey, type Slot } from './model';
 
 export type StatTotals = {
   hp: number;
@@ -41,9 +41,14 @@ function statKind(name: string | null | undefined, element: string) {
   return STAT_NAMES[name];
 }
 
-/** Artifact value in data units (percentages become fractions). */
+/**
+ * Artifact value in data units (percentages become fractions). With character totals, the
+ * artifact part is total − stats without artifacts, all of it as flat HP/ATK/DEF (the same result
+ * in gcsim as splitting it into % and flat).
+ */
 export function artifactValue(slot: Slot, key: ArtifactStatKey): number {
-  const v = slot.artifacts[key] ?? 0;
+  const fromTotals = slot.statMode === 'totals' ? (artifactsFromTotals(slot) ?? {}) : undefined;
+  const v = fromTotals ? (key === 'atk%' || key === 'hp%' || key === 'def%' ? 0 : (fromTotals[key] ?? 0)) : (slot.artifacts[key] ?? 0);
   const percent = !['atk', 'hp', 'def', 'em'].includes(key);
   return percent ? v / 100 : v;
 }

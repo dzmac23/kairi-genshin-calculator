@@ -11,6 +11,8 @@ import { loadGameData, type GameData } from '../data/gameData';
 import { DEFAULT_TOKEN_TABLE, parseTokenTable } from '../rotation/tokens';
 import { measureTiming } from '../rotation/timing';
 import { placeholderTeam } from '../team/placeholderTeam.testutil';
+import { getBaseline, snapshotConfig, solveArtifacts, statsFromSnapshot } from '../team/baseline';
+import { type Slot } from '../team/model';
 
 const engineDir = resolve('public/gcsim');
 const hasEngine = existsSync(`${engineDir}/main.wasm`);
@@ -75,6 +77,36 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     for (let i = 0; i < 100; i++) aggregate(simulate() as Uint8Array);
     const dps = JSON.parse((flush() as { result: string }).result).statistics.dps.mean;
     expect(Math.abs(dps - 35126) / 35126).toBeLessThan(0.1);
+  });
+
+  it('gives the same stats from character totals as from the artifact stats they came from', async () => {
+    const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
+    const engine = async (config: string): Promise<number[]> => {
+      const out = JSON.parse(sample(config, '1'));
+      expect(out.error).toBeUndefined();
+      return out.character_details[0].snapshot;
+    };
+    const shown = async (slot: Slot) =>
+      statsFromSnapshot(await engine(snapshotConfig({ ...slot, statMode: 'artifacts' }, data, true)), data.character.get(slot.character!)!.element);
+    const original = placeholderTeam(data);
+    // Each character's totals as the character screen would show them, then entered as totals.
+    const fromTotals: Slot[] = [];
+    for (const slot of original) {
+      const typed: Slot = { ...slot, statMode: 'totals', totals: await shown(slot) };
+      fromTotals.push({ ...typed, baseline: await solveArtifacts(typed, data, await getBaseline(typed, data, engine), engine) });
+    }
+    expect(buildConfig(fromTotals, data, plan, table, DEFAULT_SETTINGS, 100).problems).toEqual([]);
+    // Kazuha's Xiphos' Moonlight turns Elemental Mastery into Energy Recharge: the artifacts' 22.04%
+    // ER must come out as 22.04%, not with the weapon's extra ER from the artifacts' EM added.
+    expect(fromTotals[1].baseline!.solved!.artifacts.er).toBeCloseTo(22.04, 0);
+    // Viridescent's 2-piece Anemo bonus is not counted as artifact stats.
+    expect(fromTotals[1].baseline!.solved!.artifacts['elem%']).toBeCloseTo(0, 1);
+    // gcsim shows every character the same totals from the worked-out artifact stats.
+    for (let i = 0; i < original.length; i++) {
+      const fromArtifacts = await shown(original[i]);
+      const solvedSlot: Slot = { ...fromTotals[i], statMode: 'artifacts', artifacts: { ...fromTotals[i].baseline!.solved!.artifacts } };
+      expect(await shown(solvedSlot)).toEqual(fromArtifacts);
+    }
   });
 
   it('runs until the enemy dies when it has HP, and stops at the time limit when it does not die', () => {
