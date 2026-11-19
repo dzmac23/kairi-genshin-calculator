@@ -46,7 +46,7 @@ Added during Phase 1 at the owner's request: Opener/Loop rotations with `?`, `@`
 
 ### Known limits
 
-- Eight characters aren't in gcsim yet (see below); a team simulated without one of its members shows too little DPS.
+- Seven characters aren't in gcsim yet, and Linnea is experimental (see below); a team simulated without one of its members shows too little DPS.
 - Results are averages of random fights: small differences between runs can be luck. Compare shows when that's the case; 1,000 fights give the most precise numbers.
 - With an enemy HP, the time limit is checked before each Loop turn, so a fight can run a little past it (the turn in progress finishes).
 - Enemies are standing targets with their real resistances; boss mechanics (shields, phases where they can't be hit, moving around, resistance changes) aren't simulated.
@@ -82,7 +82,7 @@ Two workflows in `.github/workflows/` run on GitHub's servers:
 
 | File | What it does |
 | --- | --- |
-| `build-gcsim-wasm.yml` | Downloads gcsim at the version in `gcsim-version.txt`, compiles its browser engine (`main.wasm` plus Go's `wasm_exec.js`), then tests it by simulating the placeholder test team and checking the DPS is within 10% of 35,100. gcsim does not publish this file itself, which is why we build it. |
+| `build-gcsim-wasm.yml` | Downloads gcsim at the version in `gcsim-version.txt`, applies `patches/`, compiles its browser engine (`main.wasm` plus Go's `wasm_exec.js`), then tests it by simulating the placeholder test team and checking the DPS is within 10% of 35,100. gcsim does not publish this file itself, which is why we build it. |
 | `deploy.yml` | Runs on every push. Uses the engine from the first workflow, builds the app, and publishes it to GitHub Pages, but only for pushes to `main`. Other branches just get a test build. |
 
 You can watch them in the repository's **Actions** tab. A green tick means it worked.
@@ -96,12 +96,15 @@ The app uses **gcsim v2.50.0** (pinned in `gcsim-version.txt`).
 To upgrade:
 1. Change the tag in `gcsim-version.txt` (for example `v2.50.0` → `v2.51.0`).
 2. If the new version adds characters, weapons or sets, fill in their `gcsim_key` in `data/characters.json`, `data/weapons.json` or `data/artifact_sets.json`, and add them to `data/gcsim_keys.json`. gcsim's accepted names are in its `pkg/shortcut/*.dm.go` files.
-3. Run `npm run engine` and then `node scripts/export_enemies.mjs` to refresh the enemy list (`data/enemies.json`) from the new version.
-4. Push. The workflow rebuilds the engine and retests it with the placeholder test team.
+3. The build applies `patches/` (characters gcsim doesn't include yet). If a patch no longer applies, the build says why; if gcsim now includes that character, the build skips the patch and you delete it (see `patches/README.md`).
+4. Run `npm run engine` and then `node scripts/export_enemies.mjs` to refresh the enemy list (`data/enemies.json`) from the new version.
+5. Push. The workflow rebuilds the engine and retests it with the placeholder test team.
 
 ### Characters gcsim doesn't support yet
 
-As of gcsim v2.50.0, these characters are in the app's data (stats, talents and buffs) but gcsim can't simulate them yet, so the Setup screen warns and skips them: **Kachina, Linnea, Lohen, Mitya, Nefer, Valeriy, Vesna, Vodyanitsa**. A team simulated without one of its members shows too little DPS, because that character's damage and buffs are missing. Sandrone was added in v2.50.0.
+As of gcsim v2.50.0, these characters are in the app's data (stats, talents and buffs) but gcsim can't simulate them yet, so the Setup screen warns and skips them: **Kachina, Lohen, Mitya, Nefer, Valeriy, Vesna, Vodyanitsa**. A team simulated without one of its members shows too little DPS, because that character's damage and buffs are missing. Sandrone was added in v2.50.0.
+
+**Experimental:** **Linnea** isn't in gcsim yet either, but the app adds her from an unfinished gcsim pull request (`patches/linnea.patch`, with three timing fixes so gcsim's own checks pass). She's marked "Experimental" in the app and gcsim flags her as incomplete in results: the code hasn't been reviewed by gcsim's maintainers, so her numbers may not match the game. See `patches/README.md`.
 
 ## For developers
 

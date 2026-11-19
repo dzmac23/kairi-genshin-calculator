@@ -16,6 +16,11 @@ export type Character = {
   rarity: number;
   ascension_stat: string; // "CRIT DMG"
   gcsim_key: string | null; // null when gcsim does not support the character yet
+  /**
+   * Set when gcsim only has this character through a patch in patches/ (code from an unmerged gcsim
+   * pull request): results are experimental.
+   */
+  gcsim_patch?: string;
   c3_boosts: string;
   c5_boosts: string;
   stats: { level: LevelKey; base_hp: number; base_atk: number; base_def: number; ascension_value_excl_base_crit: number }[];

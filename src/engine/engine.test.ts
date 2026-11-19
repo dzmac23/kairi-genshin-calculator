@@ -80,6 +80,26 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(Math.abs(dps - 35126) / 35126).toBeLessThan(0.1);
   });
 
+  // Characters added by patches/ (unmerged gcsim pull requests). Only when this engine includes them.
+  const enginePatches: string[] = existsSync(`${engineDir}/version.json`) ? (JSON.parse(readFileSync(`${engineDir}/version.json`, 'utf8')).patches ?? []) : [];
+  it.skipIf(!enginePatches.includes('linnea'))('simulates Linnea from patches/linnea.patch, marked incomplete by gcsim', () => {
+    const team = placeholderTeam(data);
+    const bow = data.weapons.find((w) => w.gcsim_key === 'favoniuswarbow')!;
+    team[1] = { ...team[1], character: 'Linnea', weapon: bow.name, sets: { mode: 'none' } };
+    const loop = { opener: '', loop: 'Neuvillette tE > Linnea E Q N3 > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
+    const built = buildConfig(team, data, loop, table, DEFAULT_SETTINGS, 20);
+    expect(built.problems).toEqual([]);
+    expect(built.config).toContain('linnea char lvl=');
+    expect(error(initializeAggregator(built.config!))).toBeUndefined();
+    expect(initializeWorker(built.config!)).toBeNull();
+    for (let i = 0; i < 20; i++) aggregate(simulate() as Uint8Array);
+    const result = JSON.parse((flush() as { result: string }).result);
+    const linnea = result.character_details.findIndex((c: { name: string }) => c.name === 'linnea');
+    expect(linnea).toBeGreaterThanOrEqual(0);
+    expect(result.statistics.character_dps[linnea].mean).toBeGreaterThan(0);
+    expect(result.incomplete_characters).toContain('linnea');
+  });
+
   it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {
     const furina = placeholderTeam(data)[2];
     const hpAt = (level: string) => {

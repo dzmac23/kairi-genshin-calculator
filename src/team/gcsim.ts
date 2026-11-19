@@ -67,6 +67,13 @@ export function checkTeam(team: Team, data: GameData): TeamProblem[] {
       });
       return;
     }
+    if (character.gcsim_patch) {
+      problems.push({
+        slot: i,
+        message: `${character.name} is experimental: gcsim doesn't include them yet, so this app adds them from an unfinished gcsim pull request (see patches/${character.gcsim_patch}.patch). Results may not match the game.`,
+        blocking: false,
+      });
+    }
     if (seen.has(character.name)) {
       problems.push({ slot: i, message: `${character.name} is in the team twice.`, blocking: true });
     }

@@ -33,7 +33,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: public/gcsim
-          key: gcsim-engine-${{ steps.pin.outputs.tag }}-${{ hashFiles('scripts/build-gcsim.sh') }}
+          key: gcsim-engine-${{ steps.pin.outputs.tag }}-${{ hashFiles('scripts/build-gcsim.sh', 'patches/**') }}
 
       - name: Check out gcsim ${{ steps.pin.outputs.tag }}
         if: steps.cache.outputs.cache-hit != 'true'

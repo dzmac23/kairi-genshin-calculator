@@ -1,0 +1,1596 @@
+Linnea for gcsim, from an unmerged gcsim pull request, plus three timing fixes.
+
+Source: https://github.com/genshinsim/gcsim/pull/2596 by TheSast (frames counted by caramielle),
+        at commit 0e439a5 (2026-11-10), which is based on gcsim v2.50.0.
+Not reviewed or accepted by gcsim's maintainers: results are experimental.
+
+Left out: the website files (ui/) and data_gen.textproto (the reviewers asked for it to be deleted).
+
+Fixes added by this project (gcsim's frame-consistency test failed without them):
+  - Skill: the full animation length was a placeholder ("// ?", 14 frames) shorter than the
+    measured cancels; it is now the longest measured cancel (aim, 44).
+  - Burst: the earliest next action is the skill at 96, not the swap at 97.
+  - Normal attack 3: the next attack can't start (43, from before the frames were measured)
+    before the measured arrow release (47); it is now 47.
+
+Known open points from gcsim's review (not changed here): how C1 "Field Catalog" stacks are used
+up may be wrong (affects C1 and up only); some timings are still estimates.
+
+This file is applied by scripts/build-gcsim.sh. When gcsim includes Linnea itself, the build
+skips it and says so; then delete this file.
+
+diff --git a/internal/characters/linnea/aimed.go b/internal/characters/linnea/aimed.go
+new file mode 100644
+index 00000000..b0d10422
+--- /dev/null
++++ b/internal/characters/linnea/aimed.go
+@@ -0,0 +1,91 @@
++package linnea
++
++import (
++	"fmt"
++
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++// TODO: implement frames
++var aimedFrames [][]int
++
++var aimedHitmarks = []int{15, 86}
++
++func init() {
++	aimedFrames = make([][]int, 2)
++
++	// Aimed Shot
++	aimedFrames[0] = frames.InitAbilSlice(23)
++	aimedFrames[0][action.ActionDash] = aimedHitmarks[0]
++	aimedFrames[0][action.ActionJump] = aimedHitmarks[0]
++
++	// Fully-Charged Aimed Shot
++	aimedFrames[1] = frames.InitAbilSlice(94)
++	aimedFrames[1][action.ActionDash] = aimedHitmarks[1]
++	aimedFrames[1][action.ActionJump] = aimedHitmarks[1]
++}
++
++// Aimed charge attack damage queue generator
++func (c *char) Aimed(p map[string]int) (action.Info, error) {
++	hold, ok := p["hold"]
++	if !ok {
++		hold = attacks.AimParamLv1
++	}
++	switch hold {
++	case attacks.AimParamPhys:
++	case attacks.AimParamLv1:
++	default:
++		return action.Info{}, fmt.Errorf("invalid hold param supplied, got %v", hold)
++	}
++	travel, ok := p["travel"]
++	if !ok {
++		travel = 10
++	}
++	weakspot := p["weakspot"]
++
++	ai := info.AttackInfo{
++		ActorIndex:           c.Index(),
++		Abil:                 "Fully-Charged Aimed Shot",
++		AttackTag:            attacks.AttackTagExtra,
++		ICDTag:               attacks.ICDTagNone,
++		ICDGroup:             attacks.ICDGroupDefault,
++		StrikeType:           attacks.StrikeTypePierce,
++		Element:              attributes.Geo,
++		Durability:           25,
++		Mult:                 fullaim[c.TalentLvlAttack()],
++		HitWeakPoint:         weakspot == 1,
++		HitlagHaltFrames:     .12 * 60,
++		HitlagOnHeadshotOnly: true,
++		IsDeployable:         true,
++	}
++	if hold < attacks.AimParamLv1 {
++		ai.Abil = "Aimed Shot"
++		ai.Element = attributes.Physical
++		ai.Mult = aim[c.TalentLvlAttack()]
++	}
++
++	c.Core.QueueAttack(
++		ai,
++		combat.NewBoxHit(
++			c.Core.Combat.Player(),
++			c.Core.Combat.PrimaryTarget(),
++			info.Point{Y: -0.5},
++			0.1,
++			1,
++		),
++		aimedHitmarks[hold],
++		aimedHitmarks[hold]+travel,
++	)
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(aimedFrames[hold]),
++		AnimationLength: aimedFrames[hold][action.InvalidAction],
++		CanQueueAfter:   aimedHitmarks[hold],
++		State:           action.AimState,
++	}, nil
++}
+diff --git a/internal/characters/linnea/asc.go b/internal/characters/linnea/asc.go
+new file mode 100644
+index 00000000..71a200d5
+--- /dev/null
++++ b/internal/characters/linnea/asc.go
+@@ -0,0 +1,126 @@
++package linnea
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/glog"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++	"github.com/genshinsim/gcsim/pkg/reactable"
++)
++
++const (
++	a1Key                    = "linnea-a1"
++	a4Key                    = "linnea-a4"
++	lunarcrystallizeBonusKey = "linnea-lcr-bonus"
++)
++
++func (c *char) a1OnLumi(src int) {
++	if c.Base.Ascension < 1 {
++		return
++	}
++	c.a1Ticker(src)
++}
++
++func (c *char) a1Ticker(src int) {
++	if c.skillSrc != src {
++		return
++	}
++	if !c.StatusIsActive(skillStandardPower) && !c.StatusIsActive(skillSuperPower) {
++		return
++	}
++	shred := 0.15
++	if c.Core.Player.GetMoonsignLevel() >= 2 {
++		shred += 0.15
++	}
++	for _, e := range c.Core.Combat.EnemiesWithinArea(combat.NewCircleHitOnTarget(c.LumiPos(), nil, 10), nil) {
++		e.AddResistMod(info.ResistMod{
++			Base:  modifier.NewBaseWithHitlag(a1Key, 1.5*60),
++			Ele:   attributes.Geo,
++			Value: -shred,
++		})
++	}
++	c.Core.Tasks.Add(func() { c.a1Ticker(src) }, 60)
++}
++
++func (c *char) a4Init() {
++	if c.Base.Ascension < 4 {
++		return
++	}
++	m := make([]float64, attributes.EndStatType)
++
++	// only give buff to other moonsign chars
++	for _, char := range c.Core.Player.Chars() {
++		if char.Moonsign == 0 {
++			continue
++		}
++		if char.Index() == c.Index() {
++			continue
++		}
++		char.AddStatMod(character.StatMod{
++			Base:         modifier.NewBaseWithHitlag(a4Key, -1),
++			AffectedStat: attributes.EM,
++			Amount: func() []float64 {
++				if c.Core.Player.Active() != char.Index() {
++					return nil
++				}
++
++				m[attributes.EM] = c.TotalDef(true) * 0.05
++				return m
++			},
++		})
++	}
++
++	// give buff to self
++	c.AddStatMod(character.StatMod{
++		Base:         modifier.NewBaseWithHitlag(a4Key, -1),
++		AffectedStat: attributes.EM,
++		Amount: func() []float64 {
++			if c.Core.Player.ActiveChar().Moonsign > 0 && c.Core.Player.Active() != c.Index() {
++				return nil
++			}
++
++			m[attributes.EM] = c.TotalDef(true) * 0.05
++			return m
++		},
++	})
++}
++
++func (c *char) moonsignInit() {
++	c.Core.Flags.Custom[reactable.LunarCrystallizeEnableKey] = 1
++
++	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++
++		if atk.Info.AttackTag != attacks.AttackTagDirectLunarCrystallize {
++			return
++		}
++
++		bonus := min(c.TotalDef(false)/100.0*0.007, 0.14)
++
++		if c.Core.Flags.LogDebug {
++			c.Core.Log.NewEvent("linnea adding lunar crystallize base damage", glog.LogCharacterEvent, c.Index()).Write("bonus", bonus)
++		}
++
++		atk.Info.BaseDmgBonus += bonus
++	}, lunarcrystallizeBonusKey)
++
++	c.Core.Events.Subscribe(event.OnSpecialReactionAttack, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++
++		if atk.Info.AttackTag != attacks.AttackTagReactionLunarCrystallize {
++			return
++		}
++
++		bonus := min(c.TotalDef(false)/100.0*0.007, 0.14)
++
++		if c.Core.Flags.LogDebug {
++			c.Core.Log.NewEvent("linnea adding lunar crystallize base damage", glog.LogCharacterEvent, c.Index()).Write("bonus", bonus)
++		}
++
++		atk.Info.BaseDmgBonus += bonus
++	}, lunarcrystallizeBonusKey+"reaction")
++}
+diff --git a/internal/characters/linnea/attack.go b/internal/characters/linnea/attack.go
+new file mode 100644
+index 00000000..b9c54ee5
+--- /dev/null
++++ b/internal/characters/linnea/attack.go
+@@ -0,0 +1,72 @@
++package linnea
++
++import (
++	"fmt"
++
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++// TODO: implement frames
++var (
++	attackFrames   [][]int
++	attackHitmarks = []int{15, 12, 47}
++)
++
++const normalHitNum = 3
++
++func init() {
++	attackFrames = make([][]int, normalHitNum)
++
++	attackFrames[0] = frames.InitNormalCancelSlice(attackHitmarks[0], 21) // N1 -> N2
++	attackFrames[1] = frames.InitNormalCancelSlice(attackHitmarks[1], 26) // N2 -> N3
++	attackFrames[2] = frames.InitNormalCancelSlice(attackHitmarks[2], 47) // N3 -> N1 (kairi: not before the measured release at 47; 43 predates the measured frames)
++}
++
++// Normal attack damage queue generator
++// relatively standard with no major differences versus other bow characters
++// Has "travel" parameter, used to set the number of frames that the arrow is in the air (default = 10)
++func (c *char) Attack(p map[string]int) (action.Info, error) {
++	travel, ok := p["travel"]
++	if !ok {
++		travel = 10
++	}
++
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       fmt.Sprintf("Normal %v", c.NormalCounter),
++		AttackTag:  attacks.AttackTagNormal,
++		ICDTag:     attacks.ICDTagNone,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypePierce,
++		Element:    attributes.Physical,
++		Durability: 25,
++		Mult:       attack[c.NormalCounter][c.TalentLvlAttack()],
++	}
++
++	c.Core.QueueAttack(
++		ai,
++		combat.NewBoxHit(
++			c.Core.Combat.Player(),
++			c.Core.Combat.PrimaryTarget(),
++			info.Point{Y: -0.5},
++			0.1,
++			1,
++		),
++		attackHitmarks[c.NormalCounter],
++		attackHitmarks[c.NormalCounter]+travel,
++	)
++
++	defer c.AdvanceNormalIndex()
++
++	return action.Info{
++		Frames:          frames.NewAttackFunc(c.Character, attackFrames),
++		AnimationLength: attackFrames[c.NormalCounter][action.InvalidAction],
++		CanQueueAfter:   attackHitmarks[c.NormalCounter],
++		State:           action.NormalAttackState,
++	}, nil
++}
+diff --git a/internal/characters/linnea/burst.go b/internal/characters/linnea/burst.go
+new file mode 100644
+index 00000000..292c4f00
+--- /dev/null
++++ b/internal/characters/linnea/burst.go
+@@ -0,0 +1,73 @@
++package linnea
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++var burstFrames []int
++
++const (
++	initialHeal        = 96
++	energyDrainDelay   = 4
++	firstSkillHitDelay = 214
++)
++
++func init() {
++	burstFrames = frames.InitAbilSlice(110)
++	burstFrames[action.ActionSkill] = 96
++	burstFrames[action.ActionSwap] = 97
++}
++
++func (c *char) Burst(p map[string]int) (action.Info, error) {
++	src := c.Core.F
++	c.skillSrc = src
++	switch {
++	case c.StatusIsActive(skillStandardPower):
++		c.AddStatus(skillStandardPower, skillDur, false)
++	case c.StatusIsActive(skillSuperPower):
++		c.AddStatus(skillSuperPower, skillDur, false)
++	default:
++		c.AddStatus(skillSuperPower, skillDur, false)
++		c.a1OnLumi(src)
++		c.advanceSkillIndex() // the first pound pound is skipped right after summoning
++		c.Core.Tasks.Add(func() { c.lumiAttack(src) }, firstSkillHitDelay)
++	}
++
++	// initial heal
++	c.QueueCharTask(func() {
++		heal := burstInitialFlat[c.TalentLvlBurst()] + burstInitialDef[c.TalentLvlBurst()]*c.TotalDef(false)
++		c.Core.Player.Heal(info.HealInfo{
++			Caller:  c.Index(),
++			Target:  -1,
++			Message: "Memo: Survival Guide in Extreme Conditions (Initial)",
++			Src:     heal,
++			Bonus:   c.Stat(attributes.Heal),
++		})
++	}, initialHeal)
++
++	for i := range 12 {
++		c.QueueCharTask(func() {
++			heal := burstTickFlat[c.TalentLvlBurst()] + burstTickDef[c.TalentLvlBurst()]*c.TotalDef(false)
++			c.Core.Player.Heal(info.HealInfo{
++				Caller:  c.Index(),
++				Target:  c.Core.Player.Active(),
++				Message: "Memo: Survival Guide in Extreme Conditions (Tick)",
++				Src:     heal,
++				Bonus:   c.Stat(attributes.Heal),
++			})
++		}, initialHeal+i*60+60)
++	}
++
++	c.SetCD(action.ActionBurst, 15*60)
++	c.ConsumeEnergy(energyDrainDelay)
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(burstFrames),
++		AnimationLength: burstFrames[action.InvalidAction],
++		CanQueueAfter:   burstFrames[action.ActionSkill], // earliest cancel (kairi: skill at 96 is earlier than swap at 97)
++		State:           action.BurstState,
++	}, nil
++}
+diff --git a/internal/characters/linnea/config.yml b/internal/characters/linnea/config.yml
+new file mode 100644
+index 00000000..e1345fd7
+--- /dev/null
++++ b/internal/characters/linnea/config.yml
+@@ -0,0 +1,49 @@
++use: pipeline
++kind: character
++name: linnea
++
++talents:
++  - attack:
++    - attack(1-Hit DMG)
++    - attack(2-Hit DMG)
++    - attack(3-Hit DMG)
++  - aim: attack(Aimed Shot)
++  - fullaim: attack(Fully-Charged Aimed Shot)
++  - collision: attack(Plunge DMG)
++  - lowPlunge: attack(Low/High Plunge DMG)
++  - highPlunge: attack(Low/High Plunge DMG|1)
++
++  - skillPound: skill(Lumi Pound-Pound Pummeler DMG)
++  - skillHeavy: skill(Lumi Heavy Overdrive Hammer DMG)
++  - skillMillion: skill(Lumi Million Ton Crush DMG)
++
++  - burstInitialFlat: burst(Initial Healing Amount)
++  - burstInitialDef: burst(Initial Healing Amount|1)
++  - burstTickFlat: burst(Continuous Healing)
++  - burstTickDef: burst(Continuous Healing|1)
++
++docs:
++  frames:
++    - count: https://docs.google.com/spreadsheets/d/1JBfw7ObsV8QXKiOEsrkeTcc36yChs9azBST5514U5uI/
++      count_credit: caramielle.
++      video: https://youtu.be/EczNMc6Q3R4
++      video_credit: caramielle.
++    - count: https://docs.google.com/spreadsheets/d/1JBfw7ObsV8QXKiOEsrkeTcc36yChs9azBST5514U5uI/
++      count_credit: caramielle.
++      video: https://youtu.be/CdDFKsKmRz0
++      video_credit: caramielle.
++
++abilities:
++  - name: attack
++    params:
++      travel: Projectile travel time. Default 10 frames.
++
++  - name: aim
++    params:
++      hold: 0 for Physical Aimed Shot, 1 for Fully-Charged Aimed Shot.
++      travel: Projectile travel time. Default 10 frames.
++      weakspot: Hit the weakspot with the aimed shot. Default 0 (false), 1 for true.
++
++  - name: skill
++    params:
++      recast: Recast the skill while its recast window is active.
+diff --git a/internal/characters/linnea/cons.go b/internal/characters/linnea/cons.go
+new file mode 100644
+index 00000000..06d43a49
+--- /dev/null
++++ b/internal/characters/linnea/cons.go
+@@ -0,0 +1,228 @@
++package linnea
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/glog"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++	"github.com/genshinsim/gcsim/pkg/reactable"
++)
++
++const (
++	c1Key     = "linnea-c1"
++	c2Key     = "linnea-c2"
++	c4Key     = "linnea-c4"
++	c4KeySelf = "linnea-c4-self"
++	c6Key     = "linnea-c6"
++)
++
++func (c *char) c1Init() {
++	if c.Base.Cons < 1 {
++		return
++	}
++	c.Core.Events.Subscribe(event.OnMoondriftHarmony, func(args ...any) {
++		if _, ok := args[0].(info.Target); !ok {
++			return
++		}
++		if !c.StatusIsActive(c1Key) {
++			c.c1Stacks = 0
++		}
++		c.AddStatus(c1Key, 10*60, true)
++		stacks := c.c6C1Stacks()
++		c.c1Stacks = min(c.c1Stacks+stacks, 18)
++	}, c1Key)
++
++	f := func(atk *info.AttackEvent) {
++		if !c.StatusIsActive(c1Key) {
++			return
++		}
++
++		maxStacks := 1
++		scaling := 0.75
++		if atk.Info.ActorIndex == c.Index() && atk.Info.Abil == skillMillionAbil {
++			maxStacks = 5
++			scaling = 1.5
++		}
++
++		c6stacks, c6scale := c.c6C1Mult()
++		maxStacks *= c6stacks
++		scaling *= c6scale
++
++		if c.c1Stacks > 0 {
++			def := c.TotalDef(false)
++			stacks := min(c.c1Stacks, maxStacks)
++			amt := def * scaling * float64(stacks)
++			if c.Core.Flags.LogDebug {
++				c.Core.Log.NewEvent("Linnea C1 proc dmg add", glog.LogPreDamageMod, atk.Info.ActorIndex).
++					Write("addition", amt).
++					Write("Field Catalog stacks left", c.c1Stacks)
++			}
++			atk.Info.FlatDmg += amt
++			c.c1Stacks -= stacks
++		}
++	}
++
++	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++		switch atk.Info.AttackTag {
++		case attacks.AttackTagDirectLunarCrystallize:
++		default:
++			return
++		}
++		f(atk)
++	}, c1Key)
++	c.Core.Events.Subscribe(event.OnSpecialReactionAttack, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++		switch atk.Info.AttackTag {
++		case attacks.AttackTagReactionLunarCrystallize:
++		default:
++			return
++		}
++		f(atk)
++	}, c1Key)
++}
++
++func (c *char) c1OnSkill() {
++	if c.Base.Cons < 1 {
++		return
++	}
++	if !c.StatusIsActive(c1Key) {
++		c.c1Stacks = 0
++	}
++	c.AddStatus(c1Key, 10*60, true)
++	c.c1Stacks = min(c.c1Stacks+6, 18)
++}
++
++func (c *char) c2Init() {
++	if c.Base.Cons < 2 {
++		return
++	}
++	m := make([]float64, attributes.EndStatType)
++	m[attributes.CD] = 0.4
++	c.Core.Events.Subscribe(event.OnMoondriftHarmony, func(args ...any) {
++		if _, ok := args[0].(info.Target); !ok {
++			return
++		}
++		if !c.StatusIsActive(c1Key) {
++			c.c1Stacks = 0
++		}
++		for _, char := range c.Core.Player.Chars() {
++			switch char.Base.Element {
++			case attributes.Geo:
++			case attributes.Hydro:
++			default:
++				return
++			}
++			char.AddStatMod(character.StatMod{
++				Base:         modifier.NewBaseWithHitlag(c2Key, 8*60),
++				AffectedStat: attributes.CD,
++				Amount: func() []float64 {
++					return m
++				},
++			})
++		}
++	}, c2Key)
++}
++
++func (c *char) c2MillionTonCDBonus(snap *info.Snapshot) {
++	if c.Base.Cons < 2 {
++		return
++	}
++	snap.Stats[attributes.CD] += 1.5
++}
++
++func (c *char) c2TriggerMoonDrift() {
++	if c.Base.Cons < 2 {
++		return
++	}
++	if c.Core.Player.GetMoonsignLevel() < 2 {
++		return
++	}
++	var contribMap [info.MaxChars]bool
++	for _, char := range c.Core.Player.Chars() {
++		switch char.Base.Element {
++		case attributes.Hydro:
++		case attributes.Geo:
++		default:
++			continue
++		}
++		contribMap[char.Index()] = true
++	}
++	reactable.DoLCrAttackWithContrib(contribMap, c.Core.Combat.PrimaryTarget(), c.Core, c.Index())
++	c.Core.Log.NewEvent("Linnea C2 Lunar Crystallize attack triggered", glog.LogElementEvent, c.Index())
++}
++
++func (c *char) c4Init() {
++	if c.Base.Cons < 4 {
++		return
++	}
++	m := make([]float64, attributes.EndStatType)
++	m[attributes.DEFP] = 0.25
++	c.Core.Events.Subscribe(event.OnMoondriftHarmony, func(args ...any) {
++		if _, ok := args[0].(info.Target); !ok {
++			return
++		}
++		for _, char := range c.Core.Player.Chars() {
++			char.AddStatMod(character.StatMod{
++				Base:         modifier.NewBaseWithHitlag(c4Key, 5*60),
++				AffectedStat: attributes.DEFP,
++				Amount: func() []float64 {
++					if c.Core.Player.Active() == char.Index() {
++						return m
++					}
++					return nil
++				},
++			})
++		}
++
++		c.AddStatMod(character.StatMod{
++			Base:         modifier.NewBaseWithHitlag(c4KeySelf, 5*60),
++			AffectedStat: attributes.DEFP,
++			Amount: func() []float64 {
++				return m
++			},
++		})
++	}, c4Key)
++}
++
++func (c *char) c6C1Stacks() int {
++	if c.Base.Cons < 6 {
++		return 6
++	}
++	return 18
++}
++
++func (c *char) c6C1Mult() (int, float64) {
++	if c.Base.Cons < 6 {
++		return 1, 1.0
++	}
++	return 2, 1.5
++}
++
++func (c *char) c6Init() {
++	if c.Base.Cons < 6 {
++		return
++	}
++
++	if c.Core.Player.GetMoonsignLevel() < 2 {
++		return
++	}
++
++	amt := 0.25
++	c.Core.Events.Subscribe(event.OnApplyAttack, func(args ...any) {
++		atk := args[0].(*info.AttackEvent)
++		if atk.Info.AttackTag == attacks.AttackTagDirectLunarCrystallize {
++			atk.Info.Elevation += amt
++		}
++	}, c6Key+"-direct")
++
++	c.Core.Events.Subscribe(event.OnSpecialReactionAttack, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++		if atk.Info.AttackTag == attacks.AttackTagReactionLunarCrystallize {
++			atk.Info.Elevation += amt
++		}
++	}, c6Key+"-reaction")
++}
+diff --git a/internal/characters/linnea/linnea.go b/internal/characters/linnea/linnea.go
+new file mode 100644
+index 00000000..b6340a85
+--- /dev/null
++++ b/internal/characters/linnea/linnea.go
+@@ -0,0 +1,62 @@
++package linnea
++
++import (
++	tmpl "github.com/genshinsim/gcsim/internal/template/character"
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++)
++
++type char struct {
++	*tmpl.Character
++	recastCount    int
++	skillRecastSrc int
++	skillSrc       int
++	skillHitNum    int // skill Hit num is used to track the attack sequence when in Super Power form
++	c1Stacks       int
++}
++
++func NewChar(s *core.Core, w *character.CharWrapper, p info.CharacterProfile) error {
++	c := char{}
++	c.Character = tmpl.NewWithWrapper(s, w)
++
++	c.EnergyMax = 60
++	c.NormalHitNum = normalHitNum
++	c.SkillCon = 3
++	c.BurstCon = 5
++	c.Moonsign = 1
++
++	w.Character = &c
++
++	return nil
++}
++
++func (c *char) Init() error {
++	c.a4Init()
++	c.moonsignInit()
++	c.c1Init()
++	c.c2Init()
++	c.c4Init()
++	c.c6Init()
++	return nil
++}
++
++func (c *char) ActionReady(a action.Action, p map[string]int) (bool, action.Failure) {
++	// check if it is possible to use E (in E recast)
++	if a == action.ActionSkill && c.StatusIsActive(skillRecastKey) {
++		return true, action.NoFailure
++	}
++	return c.Character.ActionReady(a, p)
++}
++
++func (c *char) AnimationStartDelay(k info.AnimationDelayKey) int {
++	switch k {
++	case info.AnimationXingqiuN0StartDelay:
++		return 12
++	case info.AnimationYelanN0StartDelay:
++		return 5
++	default:
++		return c.Character.AnimationStartDelay(k)
++	}
++}
+diff --git a/internal/characters/linnea/skill.go b/internal/characters/linnea/skill.go
+new file mode 100644
+index 00000000..3d188b6c
+--- /dev/null
++++ b/internal/characters/linnea/skill.go
+@@ -0,0 +1,275 @@
++package linnea
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/construct"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++const (
++	skillPoundAttack int = iota
++	skillHeavyAttack
++)
++
++var (
++	skillFrames        []int
++	skillRecastFrames  []int
++	skillSuperInterval = []int{62, 122, 90}
++	skillSequence      = []int{skillPoundAttack, skillPoundAttack, skillHeavyAttack}
++)
++
++const (
++	skillRecastKey  = "linnea-skill-recast"
++	skillRecastDur  = 0.6 * 60
++	skillDur        = 25 * 60
++	skillSuperPower = "linnea-super-power"
++
++	skillStandardPower     = "linnea-standard-power"
++	skillMillionTonHitmark = 50
++	skillStandardStart     = 48
++	skillStandardInterval  = 120
++	skillSecondHitDelay    = 21
++	skillMillionAbil       = "Lumi Million Ton Crush"
++	skillOverdriveAbil     = "Lumi Heavy Overdrive Hammer"
++
++	skillCD      = 18 * 60
++	skillCDStart = 1
++
++	particleICDKey = "linnea-particle-icd"
++	particleICD    = 9 * 60
++	particleCount  = 3
++)
++
++func init() {
++	skillFrames = frames.InitAbilSlice(44) // kairi: full length unknown; the longest measured cancel (aim, 44)
++	skillFrames[action.ActionAttack] = 33
++	skillFrames[action.ActionAim] = 44
++	skillFrames[action.ActionSkill] = 20
++	skillFrames[action.ActionBurst] = 15
++	skillFrames[action.ActionJump] = 14
++	skillFrames[action.ActionWalk] = 32
++	skillFrames[action.ActionDash] = 14
++	skillFrames[action.ActionSwap] = 13
++
++	skillRecastFrames = frames.InitAbilSlice(10) // ?
++}
++
++func (c *char) Skill(p map[string]int) (action.Info, error) {
++	if c.StatusIsActive(skillRecastKey) {
++		return c.skillRecast(), nil
++	}
++	c.recastCount = 0
++	c.DeleteStatus(skillStandardPower)
++	c.DeleteStatus(skillSuperPower)
++
++	c.AddStatus(skillRecastKey, skillRecastDur, true)
++	src := c.Core.F
++	c.skillRecastSrc = src
++	c.QueueCharTask(func() {
++		if c.skillRecastSrc != src {
++			return
++		}
++		if !c.StatusIsActive(skillSuperPower) && c.Core.Constructs.CountByType(construct.GeoConstructLunarCrystallize) > 0 {
++			c.skillHitNum = 1
++		}
++		c.AddStatus(skillSuperPower, skillDur, false)
++		c.skillSrc = src
++		c.a1OnLumi(src)
++		c.advanceSkillIndex() // the first pound pound is skipped right after summoning
++		c.Core.Tasks.Add(func() { c.lumiAttack(src) }, skillSuperInterval[1])
++	}, skillRecastDur)
++
++	c.c1OnSkill()
++	c.SetCDWithDelay(action.ActionSkill, skillCD, skillCDStart)
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(skillFrames),
++		AnimationLength: skillFrames[action.InvalidAction],
++		CanQueueAfter:   skillFrames[action.ActionSwap],
++		State:           action.SkillState,
++	}, nil
++}
++
++func (c *char) lumiAttack(src int) {
++	if c.skillSrc != src {
++		return
++	}
++	if !c.StatusIsActive(skillStandardPower) && !c.StatusIsActive(skillSuperPower) {
++		return
++	}
++
++	attack := skillPoundAttack
++	if c.StatusIsActive(skillSuperPower) && skillSequence[c.skillHitNum] == skillHeavyAttack {
++		attack = skillHeavyAttack
++	}
++
++	switch attack {
++	case skillPoundAttack:
++		c.poundPoundHammer(src)
++	case skillHeavyAttack:
++		c.heavyOverdriveHammer()
++	}
++
++	delay := skillSuperInterval[c.skillHitNum]
++	if c.StatusIsActive(skillStandardPower) {
++		delay = skillStandardInterval
++	} else {
++		c.advanceSkillIndex()
++	}
++
++	c.Core.Tasks.Add(func() { c.lumiAttack(src) }, delay)
++}
++
++func (c *char) advanceSkillIndex() {
++	if c.Core.Constructs.CountByType(construct.GeoConstructLunarCrystallize) == 0 {
++		c.skillHitNum = 0
++		return
++	}
++
++	c.skillHitNum++
++	if c.skillHitNum >= 3 {
++		c.skillHitNum = 0
++	}
++}
++
++func (c *char) skillRecast() action.Info {
++	c.recastCount++
++	src := c.Core.F
++	c.skillRecastSrc = src
++
++	if c.recastCount == 3 {
++		c.DeleteStatus(skillRecastKey)
++		// do the big hit and then lower frequency
++		c.skillHitNum = 0
++		c.skillSrc = src
++		c.AddStatus(skillStandardPower, skillDur, false)
++		c.a1OnLumi(src)
++		c.Core.Tasks.Add(func() {
++			c.millionTonHammer()
++		}, skillMillionTonHitmark)
++		c.Core.Tasks.Add(func() { c.lumiAttack(src) }, skillMillionTonHitmark+skillStandardStart)
++	} else {
++		c.AddStatus(skillRecastKey, skillRecastDur, true)
++		c.QueueCharTask(func() {
++			if c.skillRecastSrc != src {
++				return
++			}
++			if !c.StatusIsActive(skillSuperPower) && c.Core.Constructs.CountByType(construct.GeoConstructLunarCrystallize) > 0 {
++				c.skillHitNum = 1
++			}
++			c.AddStatus(skillSuperPower, skillDur, false)
++			c.skillSrc = src
++			c.a1OnLumi(src)
++			c.Core.Tasks.Add(func() { c.lumiAttack(src) }, skillSuperInterval[1])
++		}, skillRecastDur)
++	}
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(skillRecastFrames),
++		AnimationLength: skillRecastFrames[action.InvalidAction],
++		CanQueueAfter:   skillRecastFrames[action.ActionJump],
++		State:           action.SkillState, // TODO: does this matter?
++	}
++}
++
++func (c *char) millionTonHammer() {
++	ai := info.AttackInfo{
++		Abil:             skillMillionAbil,
++		ActorIndex:       c.Index(),
++		AttackTag:        attacks.AttackTagDirectLunarCrystallize,
++		ICDTag:           attacks.ICDTagNone,
++		ICDGroup:         attacks.ICDGroupDefault,
++		StrikeType:       attacks.StrikeTypeBlunt,
++		Element:          attributes.Geo,
++		Mult:             skillMillion[c.TalentLvlSkill()],
++		UseDef:           true,
++		IgnoreDefPercent: 1,
++	}
++	snap := c.Snapshot(&ai)
++	c.c2MillionTonCDBonus(&snap)
++	ap := combat.NewCircleHitOnTarget(c.LumiPos(), nil, 5)
++
++	ae := info.AttackEvent{
++		Info:        ai,
++		Pattern:     ap,
++		Snapshot:    snap,
++		SourceFrame: c.Core.F,
++	}
++
++	ae.Callbacks = append(ae.Callbacks, c.particleCB)
++	c.Core.QueueAttackEvent(&ae, 0)
++	c.c2TriggerMoonDrift()
++}
++
++func (c *char) poundPoundHammer(src int) {
++	ai := info.AttackInfo{
++		Abil:       "Lumi Pound-Pound Pummeler 1",
++		ActorIndex: c.Index(),
++		AttackTag:  attacks.AttackTagElementalArt,
++		ICDTag:     attacks.ICDTagElementalArt,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeBlunt,
++		Element:    attributes.Geo,
++		Durability: 25,
++		Mult:       skillPound[c.TalentLvlSkill()],
++		UseDef:     true,
++	}
++	ap := combat.NewCircleHitOnTarget(c.LumiPos(), nil, 3)
++	c.Core.QueueAttack(ai, ap, 0, 0, c.particleCB)
++	c.Core.Tasks.Add(func() {
++		if c.skillSrc != src {
++			return
++		}
++		ai.Abil = "Lumi Pound-Pound Pummeler 2"
++		c.Core.QueueAttack(ai, ap, 0, 0, c.particleCB)
++	}, skillSecondHitDelay)
++}
++
++func (c *char) heavyOverdriveHammer() {
++	ai := info.AttackInfo{
++		Abil:             skillOverdriveAbil,
++		ActorIndex:       c.Index(),
++		AttackTag:        attacks.AttackTagDirectLunarCrystallize,
++		ICDTag:           attacks.ICDTagNone,
++		ICDGroup:         attacks.ICDGroupDefault,
++		StrikeType:       attacks.StrikeTypeBlunt,
++		Element:          attributes.Geo,
++		Mult:             skillHeavy[c.TalentLvlSkill()],
++		UseDef:           true,
++		IgnoreDefPercent: 1,
++	}
++	snap := c.Snapshot(&ai)
++	ap := combat.NewCircleHitOnTarget(c.LumiPos(), nil, 4)
++
++	ae := info.AttackEvent{
++		Info:        ai,
++		Pattern:     ap,
++		Snapshot:    snap,
++		SourceFrame: c.Core.F,
++	}
++	ae.Callbacks = append(ae.Callbacks, c.particleCB)
++	c.Core.QueueAttackEvent(&ae, 0)
++
++	c.c2TriggerMoonDrift()
++}
++
++func (c *char) particleCB(a info.AttackCB) {
++	if a.Target.Type() != info.TargettableEnemy {
++		return
++	}
++	if c.StatusIsActive(particleICDKey) {
++		return
++	}
++	c.AddStatus(particleICDKey, particleICD, true)
++
++	c.Core.QueueParticle(c.Base.Key.String(), particleCount, attributes.Geo, c.ParticleDelay)
++}
++
++// NOTE: Lumi is not a Target in this implementation
++func (c *char) LumiPos() info.Point {
++	return c.Core.Combat.PrimaryTarget().Pos()
++}
+diff --git a/internal/characters/linnea/zz_linnea.dm.go b/internal/characters/linnea/zz_linnea.dm.go
+new file mode 100644
+index 00000000..bc8055bc
+--- /dev/null
++++ b/internal/characters/linnea/zz_linnea.dm.go
+@@ -0,0 +1,306 @@
++// Code generated by "pipeline"; DO NOT EDIT.
++
++package linnea
++
++import (
++	"fmt"
++	"slices"
++
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/keys"
++	"github.com/genshinsim/gcsim/pkg/gcs/validation"
++)
++
++func init() {
++	core.RegisterCharFunc(keys.Linnea, NewChar)
++	paramsFor := map[action.Action][]string{
++		action.ActionAttack: {"travel"},
++		action.ActionAim:    {"hold", "travel", "weakspot"},
++		action.ActionSkill:  {"recast"},
++	}
++	validation.RegisterCharParamValidationFunc(keys.Linnea, func(a action.Action, keys []string) error {
++		valid, ok := paramsFor[a]
++		if !ok {
++			return nil
++		}
++		for _, v := range keys {
++			if !slices.Contains(valid, v) {
++				return fmt.Errorf("key %v is invalid for action %v", v, a)
++			}
++		}
++		return nil
++	})
++}
++
++var (
++	attack = [][]float64{
++		{ // attack: CaptureProtocol - 1-Hit DMG: {0}
++			0.589969,
++			0.637989,
++			0.68601,
++			0.754611,
++			0.802632,
++			0.857513,
++			0.932974,
++			1.008435,
++			1.083896,
++			1.166217,
++			1.248538,
++			1.330859,
++			1.413181,
++			1.495502,
++			1.577823,
++		},
++		{ // attack: CaptureProtocol - 2-Hit DMG: {1}
++			0.511519,
++			0.553155,
++			0.59479,
++			0.654269,
++			0.695904,
++			0.743488,
++			0.808914,
++			0.874341,
++			0.939768,
++			1.011143,
++			1.082518,
++			1.153893,
++			1.225267,
++			1.296642,
++			1.368017,
++		},
++		{ // attack: CaptureProtocol - 3-Hit DMG: {2}
++			0.816312,
++			0.882756,
++			0.9492,
++			1.04412,
++			1.110564,
++			1.1865,
++			1.290912,
++			1.395324,
++			1.499736,
++			1.61364,
++			1.727544,
++			1.841448,
++			1.955352,
++			2.069256,
++			2.18316,
++		},
++	}
++	// attack: CaptureProtocol - Aimed Shot: {3}
++	aim = []float64{
++		0.4386,
++		0.4743,
++		0.51,
++		0.561,
++		0.5967,
++		0.6375,
++		0.6936,
++		0.7497,
++		0.8058,
++		0.867,
++		0.9282,
++		0.9894,
++		1.0506,
++		1.1118,
++		1.173,
++	}
++	// attack: CaptureProtocol - Fully-Charged Aimed Shot: {4}
++	fullaim = []float64{
++		1.24,
++		1.333,
++		1.426,
++		1.55,
++		1.643,
++		1.736,
++		1.86,
++		1.984,
++		2.108,
++		2.232,
++		2.356,
++		2.48,
++		2.635,
++		2.79,
++		2.945,
++	}
++	// attack: CaptureProtocol - Plunge DMG: {5}
++	collision = []float64{
++		0.568288,
++		0.614544,
++		0.6608,
++		0.72688,
++		0.773136,
++		0.826,
++		0.898688,
++		0.971376,
++		1.044064,
++		1.12336,
++		1.202656,
++		1.281952,
++		1.361248,
++		1.440544,
++		1.51984,
++	}
++	// attack: CaptureProtocol - Low/High Plunge DMG: {6}/{7}
++	lowPlunge = []float64{
++		1.136335,
++		1.228828,
++		1.32132,
++		1.453452,
++		1.545944,
++		1.65165,
++		1.796995,
++		1.94234,
++		2.087686,
++		2.246244,
++		2.404802,
++		2.563361,
++		2.721919,
++		2.880478,
++		3.039036,
++	}
++	// attack: CaptureProtocol - Low/High Plunge DMG: {6}/{7}
++	highPlunge = []float64{
++		1.419344,
++		1.534872,
++		1.6504,
++		1.81544,
++		1.930968,
++		2.063,
++		2.244544,
++		2.426088,
++		2.607632,
++		2.80568,
++		3.003728,
++		3.201776,
++		3.399824,
++		3.597872,
++		3.79592,
++	}
++	// skill: CountermeasureLumisBattleCry - Lumi Pound-Pound Pummeler DMG: {0} DEF ×2
++	skillPound = []float64{
++		0.96,
++		1.032,
++		1.104,
++		1.2,
++		1.272,
++		1.344,
++		1.44,
++		1.536,
++		1.632,
++		1.728,
++		1.824,
++		1.92,
++		2.04,
++		2.16,
++		2.28,
++	}
++	// skill: CountermeasureLumisBattleCry - Lumi Heavy Overdrive Hammer DMG: {1} DEF
++	skillHeavy = []float64{
++		1.0,
++		1.075,
++		1.15,
++		1.25,
++		1.325,
++		1.4,
++		1.5,
++		1.6,
++		1.7,
++		1.8,
++		1.9,
++		2.0,
++		2.125,
++		2.25,
++		2.375,
++	}
++	// skill: CountermeasureLumisBattleCry - Lumi Million Ton Crush DMG: {2} DEF
++	skillMillion = []float64{
++		4.0,
++		4.3,
++		4.6,
++		5.0,
++		5.3,
++		5.6,
++		6.0,
++		6.4,
++		6.8,
++		7.2,
++		7.6,
++		8.0,
++		8.5,
++		9.0,
++		9.5,
++	}
++	// burst: MemoSurvivalGuideInExtremeConditions - Initial Healing Amount: {1} DEF+{0}
++	burstInitialFlat = []float64{
++		1.6,
++		1.72,
++		1.84,
++		2.0,
++		2.12,
++		2.24,
++		2.4,
++		2.56,
++		2.72,
++		2.88,
++		3.04,
++		3.2,
++		3.4,
++		3.6,
++		3.8,
++	}
++	// burst: MemoSurvivalGuideInExtremeConditions - Initial Healing Amount: {1} DEF+{0}
++	burstInitialDef = []float64{
++		770.3755,
++		847.42377,
++		930.8927,
++		1020.78235,
++		1117.0927,
++		1219.8236,
++		1328.9753,
++		1444.5477,
++		1566.5408,
++		1694.9546,
++		1829.7891,
++		1971.0442,
++		2118.72,
++		2272.8164,
++		2433.3337,
++	}
++	// burst: MemoSurvivalGuideInExtremeConditions - Continuous Healing: {3} DEF+{2}
++	burstTickFlat = []float64{
++		0.32,
++		0.344,
++		0.368,
++		0.4,
++		0.424,
++		0.448,
++		0.48,
++		0.512,
++		0.544,
++		0.576,
++		0.608,
++		0.64,
++		0.68,
++		0.72,
++		0.76,
++	}
++	// burst: MemoSurvivalGuideInExtremeConditions - Continuous Healing: {3} DEF+{2}
++	burstTickDef = []float64{
++		154.0751,
++		169.48476,
++		186.17854,
++		204.15646,
++		223.41853,
++		243.96474,
++		265.79507,
++		288.90955,
++		313.30817,
++		338.9909,
++		365.9578,
++		394.20883,
++		423.744,
++		454.5633,
++		486.66675,
++	}
++)
+diff --git a/internal/services/assets/character.dm.go b/internal/services/assets/character.dm.go
+index 05084b9b..bc3b85bb 100644
+--- a/internal/services/assets/character.dm.go
++++ b/internal/services/assets/character.dm.go
+@@ -71,6 +71,7 @@ var avatarMap = map[string]string{
+ 	"lanyan":            "UI_AvatarIcon_Lanyan",
+ 	"lauma":             "UI_AvatarIcon_Lauma",
+ 	"layla":             "UI_AvatarIcon_Layla",
++	"linnea":            "UI_AvatarIcon_Linnea",
+ 	"lisa":              "UI_AvatarIcon_Lisa",
+ 	"lumineanemo":       "UI_AvatarIcon_PlayerGirl",
+ 	"luminecryo":        "UI_AvatarIcon_PlayerGirl",
+diff --git a/pkg/catalog/character.dm.go b/pkg/catalog/character.dm.go
+index 82e2c919..0ff94fad 100644
+--- a/pkg/catalog/character.dm.go
++++ b/pkg/catalog/character.dm.go
+@@ -10345,6 +10345,158 @@ var CharacterMap = map[keys.Char]*model.AvatarData{
+ 			BurstEnergyCost: 40.0,
+ 		},
+ 	},
++	keys.Linnea: {
++		Id:          10000130,
++		SubId:       13001,
++		Key:         "linnea",
++		Rarity:      model.QualityType_QUALITY_ORANGE,
++		Body:        model.BodyType_BODY_GIRL,
++		Region:      model.AssocType_ASSOC_TYPE_NODKRAI,
++		Element:     model.ElementType_Rock,
++		WeaponClass: model.WeaponType_WEAPON_BOW,
++		IconName:    "UI_AvatarIcon_Linnea",
++		Stats: &model.AvatarStatsData{
++			BaseHp:   770.28253,
++			BaseAtk:  11.172,
++			BaseDef:  70.5994,
++			HpCurve:  model.GrowCurveType_GROW_CURVE_HP_S5,
++			AtkCurve: model.GrowCurveType_GROW_CURVE_ATTACK_S5,
++			DefCruve: model.GrowCurveType_GROW_CURVE_HP_S5,
++			PromoData: []*model.PromotionData{
++				{
++					MaxLevel: 20,
++				},
++				{
++					MaxLevel: 40,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    660.44763,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    60.534,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    9.57828,
++						},
++					},
++				},
++				{
++					MaxLevel: 50,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    1129.7131,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    103.545,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    16.3839,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL,
++							Value:    0.048,
++						},
++					},
++				},
++				{
++					MaxLevel: 60,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    1755.4003,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    160.893,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    25.45806,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL,
++							Value:    0.096,
++						},
++					},
++				},
++				{
++					MaxLevel: 70,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    2224.6658,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    203.904,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    32.26368,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL,
++							Value:    0.096,
++						},
++					},
++				},
++				{
++					MaxLevel: 80,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    2693.9312,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    246.915,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    39.0693,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL,
++							Value:    0.144,
++						},
++					},
++				},
++				{
++					MaxLevel: 90,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    3163.1965,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    289.926,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    45.87492,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_CRITICAL,
++							Value:    0.192,
++						},
++					},
++				},
++			},
++		},
++		SkillDetails: &model.AvatarSkillsData{
++			Skill:           11302,
++			Burst:           11305,
++			Attack:          11301,
++			BurstEnergyCost: 60.0,
++		},
++	},
+ 	keys.Lisa: {
+ 		Id:          10000006,
+ 		SubId:       601,
+diff --git a/pkg/core/keys/character.dm.go b/pkg/core/keys/character.dm.go
+index af68a9f5..45c5a9ed 100644
+--- a/pkg/core/keys/character.dm.go
++++ b/pkg/core/keys/character.dm.go
+@@ -111,6 +111,7 @@ const (
+ 	LanYan                        // lanyan
+ 	Lauma                         // lauma
+ 	Layla                         // layla
++	Linnea                        // linnea
+ 	Lisa                          // lisa
+ 	LumineAnemo                   // lumineanemo
+ 	LumineCryo                    // luminecryo
+@@ -244,6 +245,7 @@ var _CharNames = [...]string{
+ 	"lanyan",
+ 	"lauma",
+ 	"layla",
++	"linnea",
+ 	"lisa",
+ 	"lumineanemo",
+ 	"luminecryo",
+@@ -377,6 +379,7 @@ var _CharValues = [...]Char{
+ 	LanYan,
+ 	Lauma,
+ 	Layla,
++	Linnea,
+ 	Lisa,
+ 	LumineAnemo,
+ 	LumineCryo,
+diff --git a/pkg/result/check.go b/pkg/result/check.go
+index 4468f496..bbb19ecf 100644
+--- a/pkg/result/check.go
++++ b/pkg/result/check.go
+@@ -10,6 +10,7 @@ import (
+ var incompleteCharacters = []keys.Char{
+ 	keys.InvalidChar,
+ 	keys.Iansan,
++	keys.Linnea,
+ }
+ 
+ func IsCharacterComplete(char keys.Char) bool {
+diff --git a/pkg/shortcut/character.dm.go b/pkg/shortcut/character.dm.go
+index ee282ac3..869922bc 100644
+--- a/pkg/shortcut/character.dm.go
++++ b/pkg/shortcut/character.dm.go
+@@ -98,6 +98,7 @@ var CharNameToKey = map[string]keys.Char{
+ 	"lanyan":                  keys.LanYan,
+ 	"lauma":                   keys.Lauma,
+ 	"layla":                   keys.Layla,
++	"linnea":                  keys.Linnea,
+ 	"lisa":                    keys.Lisa,
+ 	"lumineanemo":             keys.LumineAnemo,
+ 	"traveleranemo":           keys.LumineAnemo,
+diff --git a/pkg/simulation/imports.character.dm.go b/pkg/simulation/imports.character.dm.go
+index bbe903fa..c3f72937 100644
+--- a/pkg/simulation/imports.character.dm.go
++++ b/pkg/simulation/imports.character.dm.go
+@@ -65,6 +65,7 @@ import (
+ 	_ "github.com/genshinsim/gcsim/internal/characters/lanyan"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/lauma"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/layla"
++	_ "github.com/genshinsim/gcsim/internal/characters/linnea"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/lisa"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/lynette"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/lyney"

@@ -7756,9 +7756,9 @@
   "rarity": 5,
   "version": "6.5",
   "ascension_stat": "CRIT Rate",
-  "gcsim_key": null,
+  "gcsim_key": "linnea",
   "c3_boosts": "Skill",
-  "c5_boosts": null,
+  "c5_boosts": "Burst",
   "stats": [
    {
     "level": "1",
@@ -7872,7 +7872,8 @@
     "base_def": 971.3514088,
     "ascension_value_excl_base_crit": 0.192
    }
-  ]
+  ],
+  "gcsim_patch": "linnea"
  },
  {
   "name": "Lisa",
