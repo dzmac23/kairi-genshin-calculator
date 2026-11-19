@@ -28,21 +28,30 @@ const run = (result: unknown, extra: Partial<RunRecord> = {}): RunRecord => ({
 describe('verdict', () => {
   // Sample: sd 2,068 over 500 fights, so each average is precise to about ±181 and the
   // difference between two such runs to about ±256.
-  it('calls a large difference clearly better', () => {
-    const c = compareRuns(run(base), run(withDps(36500)));
-    expect(c.dps.verdict).toBe('b-better');
+  // The sample is 35,126 DPS.
+  it('always describes Scenario A compared with Scenario B, in DPS and as a share of B', () => {
+    const c = compareRuns(run(withDps(36500)), run(base));
+    expect(c.dps.verdict).toBe('a-better');
+    expect(c.dps.clear).toBe(false); // +3.9%: real, but under 5%
     expect(c.dps.margin).toBeCloseTo(1.96 * Math.sqrt(2) * (2067.915 / Math.sqrt(500)), 0);
-    expect(verdictText(c.dps)).toMatch(/^B is clearly better: \+3\.9% \(\+1,374 DPS\)/);
+    expect(verdictText(c.dps)).toBe('Scenario A was better than Scenario B by 1,374 DPS (+3.9%)');
+    const worse = compareRuns(run(base), run(withDps(36500)));
+    expect(worse.dps.verdict).toBe('a-worse');
+    expect(verdictText(worse.dps)).toBe('Scenario A was worse than Scenario B by 1,374 DPS (−3.8%)');
   });
 
-  it('calls a small difference too close', () => {
-    const c = compareRuns(run(base), run(withDps(35226)));
+  it('says "clearly" for a real difference of 5% or more', () => {
+    expect(verdictText(compareRuns(run(withDps(40000)), run(base)).dps)).toBe('Scenario A was clearly better than Scenario B by 4,874 DPS (+13.9%)');
+    expect(verdictText(compareRuns(run(withDps(30000)), run(base)).dps)).toBe('Scenario A was clearly worse than Scenario B by 5,126 DPS (−14.6%)');
+    // Exactly at 5% counts as clearly.
+    expect(compareRuns(run(withDps(35126 * 1.05)), run(base)).dps.clear).toBe(true);
+  });
+
+  it('calls a small difference too close, still giving the numbers', () => {
+    const c = compareRuns(run(withDps(35226)), run(base));
     expect(c.dps.verdict).toBe('too-close');
-    expect(verdictText(c.dps)).toMatch(/^Too close to call/);
-  });
-
-  it('notices when A is better', () => {
-    expect(compareRuns(run(base), run(withDps(30000))).dps.verdict).toBe('a-better');
+    expect(c.dps.clear).toBe(false);
+    expect(verdictText(c.dps)).toBe('Too close to call: Scenario A was 100 DPS (+0.3%) higher than Scenario B, within the ±256 DPS that randomness alone could explain');
   });
 
   it('gets more precise with more fights', () => {
@@ -118,12 +127,12 @@ describe('time to kill comparisons', () => {
     });
 
   it('compares runs against the same HP by time to kill, where lower is better', () => {
-    const c = compareRuns(run(kill(50)), run(kill(45)));
+    const c = compareRuns(run(kill(45)), run(kill(50)));
     expect(c.dps.metric).toBe('ttk');
-    expect(c.dps.verdict).toBe('b-better');
-    expect(verdictText(c.dps)).toBe('B is clearly better: it kills 5.0 s faster (−10.0%)');
-    expect(compareRuns(run(kill(45)), run(kill(50))).dps.verdict).toBe('a-better');
-    expect(verdictText(compareRuns(run(kill(50)), run(kill(50.1))).dps)).toMatch(/^Too close to call: B kills 0.1 s slower/);
+    expect(c.dps.verdict).toBe('a-better');
+    expect(verdictText(c.dps)).toBe('Scenario A was clearly better than Scenario B: it killed 5.0 s (10.0%) faster');
+    expect(verdictText(compareRuns(run(kill(50)), run(kill(48.5))).dps)).toBe('Scenario A was worse than Scenario B: it killed 1.5 s (3.1%) slower');
+    expect(verdictText(compareRuns(run(kill(50.1)), run(kill(50))).dps)).toMatch(/^Too close to call: Scenario A killed 0.1 s \(0.2%\) slower than Scenario B/);
   });
 
   it('falls back to DPS, with a warning, when the HP or the kind of fight differs', () => {

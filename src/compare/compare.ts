@@ -1,28 +1,35 @@
 // Comparing two runs (Scenario A and Scenario B).
 //
-// The verdict accounts for randomness: each run's average DPS is only precise to about
-// ±1.96 × spread ÷ √fights, so a difference smaller than the combined uncertainty is "too close to
-// call". Fight settings are read from gcsim's results, so the fairness check works for every run,
+// The verdict always describes Scenario A compared with Scenario B, and accounts for randomness:
+// each run's average DPS is only precise to about ±1.96 × spread ÷ √fights, so a difference smaller
+// than the combined uncertainty is "too close to call". A real difference of 5% or more is "clearly"
+// better or worse; a smaller real one is just better or worse. Fight settings are read from gcsim's results, so the fairness check works for every run,
 // including pasted configs and runs imported from someone else.
 
 import type { RunRecord } from '../history/model';
 import { characterName, summarize, type GcsimResult, type ResultsView } from '../results/summarize';
 import { ARTIFACT_STATS, type Slot } from '../team/model';
 
-export type Verdict = 'b-better' | 'a-better' | 'too-close';
+/** Scenario A compared with Scenario B. */
+export type Verdict = 'a-better' | 'a-worse' | 'too-close';
+
+/** A real difference this big (as a share of B) is "clearly" better or worse. */
+export const CLEAR_DIFFERENCE = 0.05;
 
 export type DpsComparison = {
   /** What is compared: team DPS (higher is better), or time to kill in seconds (lower is better). */
   metric: 'dps' | 'ttk';
   a: number;
   b: number;
-  /** b − a */
+  /** a − b: how much more (DPS) or longer (time to kill) Scenario A was than B. */
   diff: number;
-  /** diff ÷ a */
+  /** diff ÷ b */
   pct: number;
   /** About 95% of the time, the true difference is within diff ± margin. */
   margin: number;
   verdict: Verdict;
+  /** The difference is real and at least 5% of B ("clearly" better or worse). */
+  clear: boolean;
 };
 
 export type CharacterDelta = {
@@ -75,17 +82,22 @@ export function compareDps(a: ResultsView, b: ResultsView): DpsComparison {
   const ttk = !!a.kill && !!b.kill && a.kill.hp === b.kill.hp && !a.kill.someSurvived && !b.kill.someSurvived;
   const stat = (v: ResultsView) => (ttk ? v.kill!.time : v.teamDps);
   const se = (v: ResultsView) => (v.iterations > 1 ? stat(v).sd / Math.sqrt(v.iterations) : 0);
-  const diff = stat(b).mean - stat(a).mean;
+  const diff = stat(a).mean - stat(b).mean;
   const margin = 1.96 * Math.sqrt(se(a) ** 2 + se(b) ** 2);
-  const bBetter = ttk ? diff < 0 : diff > 0;
+  const pct = stat(b).mean ? diff / stat(b).mean : 0;
+  // More DPS is better; less time to kill is better.
+  const aBetter = ttk ? diff < 0 : diff > 0;
+  const real = Math.abs(diff) > margin;
   return {
     metric: ttk ? 'ttk' : 'dps',
     a: stat(a).mean,
     b: stat(b).mean,
     diff,
-    pct: stat(a).mean ? diff / stat(a).mean : 0,
+    pct,
     margin,
-    verdict: Math.abs(diff) <= margin ? 'too-close' : bBetter ? 'b-better' : 'a-better',
+    verdict: !real ? 'too-close' : aBetter ? 'a-better' : 'a-worse',
+    // Judged on the percentage as shown (one decimal), so "5.0%" on screen always counts as clearly.
+    clear: real && Math.round(Math.abs(pct) * 1000) >= CLEAR_DIFFERENCE * 1000,
   };
 }
 
@@ -254,19 +266,24 @@ export function compareRuns(a: RunRecord, b: RunRecord, enemyName?: (key: string
   return { dps: compareDps(viewA, viewB), fairness, sameTeam, changes: inputChanges(a, b), characters, sources, timeLost, timing, viewA, viewB };
 }
 
-/** One line for the verdict, e.g. "B is clearly better: +4.2% (+5,712 DPS)". */
+/**
+ * One line for the verdict, always Scenario A compared with Scenario B, e.g. "Scenario A was clearly
+ * better than Scenario B by 3,412 DPS (+5.1%)".
+ */
 export function verdictText(d: DpsComparison): string {
-  const sign = d.diff >= 0 ? '+' : '−';
+  const pct = `${Math.abs(d.pct * 100).toFixed(1)}%`;
+  const signed = `${d.diff >= 0 ? '+' : '−'}${pct}`;
+  const how = d.verdict === 'too-close' ? '' : `${d.clear ? 'clearly ' : ''}${d.verdict === 'a-better' ? 'better' : 'worse'}`;
   if (d.metric === 'ttk') {
-    const faster = `${Math.abs(d.diff).toFixed(1)} s ${d.diff < 0 ? 'faster' : 'slower'} (${sign}${Math.abs(d.pct * 100).toFixed(1)}%)`;
-    if (d.verdict === 'b-better') return `B is clearly better: it kills ${faster}`;
-    if (d.verdict === 'a-better') return `A is clearly better: B kills ${faster}`;
-    return `Too close to call: B kills ${faster}, within the ±${d.margin.toFixed(1)} s that randomness alone could explain`;
+    const time = `${Math.abs(d.diff).toFixed(1)} s (${pct}) ${d.diff <= 0 ? 'faster' : 'slower'}`;
+    if (d.verdict === 'too-close')
+      return `Too close to call: Scenario A killed ${time} than Scenario B, within the ±${d.margin.toFixed(1)} s that randomness alone could explain`;
+    return `Scenario A was ${how} than Scenario B: it killed ${time}`;
   }
-  const amount = `${sign}${Math.abs(d.pct * 100).toFixed(1)}% (${sign}${fmt(Math.abs(d.diff))} DPS)`;
-  if (d.verdict === 'b-better') return `B is clearly better: ${amount}`;
-  if (d.verdict === 'a-better') return `A is clearly better: B is ${amount}`;
-  return `Too close to call: B is ${amount}, within the ±${fmt(d.margin)} that randomness alone could explain`;
+  const amount = `${fmt(Math.abs(d.diff))} DPS (${signed})`;
+  if (d.verdict === 'too-close')
+    return `Too close to call: Scenario A was ${amount} ${d.diff >= 0 ? 'higher' : 'lower'} than Scenario B, within the ±${fmt(d.margin)} DPS that randomness alone could explain`;
+  return `Scenario A was ${how} than Scenario B by ${amount}`;
 }
 
 export { characterName };
