@@ -15,6 +15,7 @@
 // ends the rotation, which ends the fight (a turn already started still finishes).
 
 import { ENEMY_ELEMENTS, type Enemy, type GameData } from '../data/gameData';
+import { checkRotation, type Check } from '../rotation/checks';
 import { translateRotation, type RotationText, type TeamMember, type Translation, type Turn } from '../rotation/notation';
 import type { TokenTable } from '../rotation/tokens';
 import { checkTeam, num, teamToGcsim } from '../team/gcsim';
@@ -34,6 +35,8 @@ export type BuildResult = {
   /** Things worth knowing that don't block a run (e.g. a skipped character). */
   notes: string[];
   translation: Translation;
+  /** Live rotation checks: moves gcsim would stop or wait on, and tips (src/rotation/checks.ts). */
+  checks: Check[];
 };
 
 export function teamMembers(team: Team, data: GameData): TeamMember[] {
@@ -74,6 +77,10 @@ export function buildConfig(
   }
 
   const translation = translateRotation(rotation, teamMembers(team, data), table);
+  const checkMembers = team
+    .filter((s) => s.character && data.character.get(s.character)?.gcsim_key)
+    .map((s) => ({ key: data.character.get(s.character!)!.gcsim_key!, name: s.character!, constellation: s.constellation }));
+  const checks = checkRotation(translation, checkMembers, data.rules);
   const loopTurns = translation.turns.filter((t) => t.section === 'loop');
   if (!rotation.loop.trim()) problems.push('Rotation: type a Loop in the Rotation section of the Setup screen.');
   for (const t of translation.turns) {
@@ -86,7 +93,7 @@ export function buildConfig(
   const enemy = settings.enemy ? data.enemy.get(settings.enemy) : undefined;
   if (settings.enemy && !enemy) problems.push(`Fight settings: the enemy "${settings.enemy}" isn't in this version's enemy list. Choose another one on the Run screen.`);
 
-  if (problems.length) return { problems, notes, translation };
+  if (problems.length) return { problems, notes, translation, checks };
 
   const firstTurn = translation.turns.find((t) => t.statements && !t.raw && t.member?.key);
   const first = firstTurn!.member!.key!;
@@ -123,7 +130,7 @@ export function buildConfig(
       '}',
     ].join('\n');
   };
-  return { config: make(false), timingConfig: make(true), problems, notes, translation };
+  return { config: make(false), timingConfig: make(true), problems, notes, translation, checks };
 }
 
 /**

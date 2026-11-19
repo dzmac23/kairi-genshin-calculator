@@ -6,6 +6,9 @@
 // Turns are separated by ">" or new lines and start with a team member's name (full name, any word
 // of it that no other member shares, or the gcsim key). After the name come moves:
 //   E, Q, N5, C, N2C, hE ...   from the shorthand table (a number repeats: N5 = attack:5)
+//   hE(60), C(beams=2)         options in brackets: a lone number sets the one option the code
+//                              already has (hE = skill[hold=1], so hE(60) = skill[hold=60])
+//   L, M ...                   codes that stand for a whole gcsim statement (Kinich, Mualani)
 //   attack:3, skill[hold=1]    gcsim actions, passed through unchanged
 //   Q?          only if ready (skill and burst only); otherwise skip it
 //   Q@1/2       only in loop 1 of every 2 (loops 1, 3, 5...); @2/2 = loops 2, 4, 6; @2+ = loop 2 onwards
@@ -21,6 +24,19 @@ export type TeamMember = { name: string; key: string | null };
 
 export type TokenResult = { text: string; error?: string };
 
+/** One move as the checks see it (src/rotation/checks.ts). */
+export type Move = {
+  /** gcsim action: attack, charge, skill, burst, high_plunge, dash, aim… ("statement" for L, M). */
+  action: string;
+  params: Record<string, number>;
+  /** How many times in a row (N5 = attack × 5). */
+  count: number;
+  /** The shorthand code it came from (E, hE, N, L…), or the gcsim text. */
+  code: string;
+  /** Under ?, @ or | : it may or may not happen. */
+  conditional: boolean;
+};
+
 export type Section = 'opener' | 'loop';
 
 export type Turn = {
@@ -32,6 +48,8 @@ export type Turn = {
   /** True for a "!" line passed to gcsim unchanged. */
   raw?: boolean;
   tokens: TokenResult[];
+  /** The turn's moves in order, for the checks. */
+  moves?: Move[];
   /** gcsim statements for this turn, when it translated cleanly and gcsim supports the character. */
   statements?: string[];
   error?: string;
@@ -71,11 +89,52 @@ function isGcsimToken(token: string): boolean {
   return token.includes(':') || token.includes('[') || /^[a-z_]{4,}$/.test(token);
 }
 
-/** "N2C" -> ["attack:2", "charge"], or an error message for unknown codes. */
-export function translateCodes(token: string, codes: Map<string, string>): { actions?: string[]; error?: string } {
-  if (isGcsimToken(token)) return { actions: [token] };
+/** "skill[hold=1]" -> { action: "skill", params: { hold: 1 } }; "attack:3" -> count 3. */
+export function parseAction(text: string): { action: string; params: Record<string, number>; count: number } {
+  const m = text.match(/^([a-z_]+)(?:\[([^\]]*)\])?(?::(\d+))?$/);
+  if (!m) return { action: text, params: {}, count: 1 };
+  const params: Record<string, number> = {};
+  for (const kv of (m[2] ?? '').split(',').filter(Boolean)) {
+    const [k, v] = kv.split('=');
+    params[k.trim()] = Number(v);
+  }
+  return { action: m[1], params, count: m[3] ? Number(m[3]) : 1 };
+}
+
+const actionText = (action: string, params: Record<string, number>, count: number) => {
+  const p = Object.entries(params);
+  return `${action}${p.length ? `[${p.map(([k, v]) => `${k}=${v}`).join(',')}]` : ''}${count > 1 ? `:${count}` : ''}`;
+};
+
+/** Applies "(60)" or "(beams=2,hold=1)" to an action from the table. */
+function withOptions(action: string, options: string, code: string): { action?: string; error?: string } {
+  if (action.startsWith('!')) return { error: `"${code}" stands for a whole gcsim statement, so it can't take options.` };
+  const parsed = parseAction(action);
+  const params = { ...parsed.params };
+  for (const part of options.split(',').map((x) => x.trim()).filter(Boolean)) {
+    const named = part.match(/^([a-z_]+)\s*=\s*(-?\d+)$/);
+    if (named) {
+      params[named[1]] = Number(named[2]);
+    } else if (/^-?\d+$/.test(part)) {
+      const keys = Object.keys(parsed.params);
+      if (keys.length !== 1) return { error: `"${code}(${options})": a lone number only works on a code with one option (like hE(60)); write name=value, like C(beams=2).` };
+      params[keys[0]] = Number(part);
+    } else {
+      return { error: `"${code}(${options})": options look like hE(60) or C(beams=2).` };
+    }
+  }
+  return { action: actionText(parsed.action, params, parsed.count) };
+}
+
+/** "N2C" -> ["attack:2", "charge"], or an error message for unknown codes. "!…" entries are statements. */
+export function translateCodes(token: string, codes: Map<string, string>): { actions?: string[]; moves?: Omit<Move, 'conditional'>[]; error?: string } {
+  if (isGcsimToken(token)) {
+    const p = parseAction(token);
+    return { actions: [token], moves: [{ ...p, code: token }] };
+  }
   const sorted = [...codes.keys()].sort((a, b) => b.length - a.length);
   const actions: string[] = [];
+  const moves: Omit<Move, 'conditional'>[] = [];
   let i = 0;
   while (i < token.length) {
     const code = sorted.find((c) => token.startsWith(c, i));
@@ -84,17 +143,50 @@ export function translateCodes(token: string, codes: Map<string, string>): { act
       return { error: `"${token}" is not in the shorthand table${i > 0 ? `: it doesn't know "${rest}"` : ''}.` };
     }
     i += code.length;
+    let action = codes.get(code)!;
+    const options = token.slice(i).match(/^\(([^)]*)\)/);
+    if (options) {
+      i += options[0].length;
+      const r = withOptions(action, options[1], code);
+      if (r.error) return { error: r.error };
+      action = r.action!;
+    }
     const digits = token.slice(i).match(/^\d+/)?.[0];
     if (digits) i += digits.length;
     const count = digits ? Number(digits) : 1;
     if (count < 1) return { error: `"${token}" repeats a move 0 times.` };
-    const action = codes.get(code)!;
+    if (action.startsWith('!')) {
+      if (count > 1) return { error: `"${code}${digits}": "${code}" already repeats until it's done, so it can't take a number.` };
+      actions.push(action);
+      moves.push({ action: 'statement', params: {}, count: 1, code });
+      continue;
+    }
+    const parsed = parseAction(action);
     actions.push(count > 1 ? `${action}:${count}` : action);
+    moves.push({ ...parsed, count: parsed.count * count, code });
   }
-  return { actions };
+  return { actions, moves };
 }
 
-type Choice = { actions: string[]; conditions: string[] };
+/** Turns actions into gcsim statements: runs of actions as "key a, b;", "!…" entries as written. */
+export function actionsToStatements(key: string, actions: string[]): string[] {
+  const out: string[] = [];
+  let run: string[] = [];
+  const flush = () => {
+    if (run.length) out.push(`${key} ${run.join(', ')};`);
+    run = [];
+  };
+  for (const a of actions) {
+    if (a.startsWith('!')) {
+      flush();
+      out.push(a.slice(1).trim().replaceAll('{key}', key));
+    } else run.push(a);
+  }
+  flush();
+  return out;
+}
+
+type Choice = { actions: string[]; moves: Omit<Move, 'conditional'>[]; conditions: string[] };
 
 /** Parses one move with its modifiers, e.g. "Q?@1/2" -> burst, if ready and in loop 1 of 2. */
 function parseChoice(
@@ -108,7 +200,7 @@ function parseChoice(
   const core = match?.[1] ?? part;
   const modifiers = match?.[2] ?? '';
   if (!core) return { error: `"${part}" has no move before its ? or @.` };
-  const { actions, error } = translateCodes(core, codes);
+  const { actions, moves, error } = translateCodes(core, codes);
   if (error) return { error };
   const conditions: string[] = [];
   for (const m of modifiers.match(/\?|@\d+\/\d+|@\d+\+/g) ?? []) {
@@ -132,7 +224,7 @@ function parseChoice(
       conditions.push(`kc_loop >= ${from}`);
     }
   }
-  return { choice: { actions: actions!, conditions } };
+  return { choice: { actions: actions!, moves: moves!, conditions } };
 }
 
 /** "Q?@1/2|E" -> if .x.burst.ready && kc_c2 == 1 { x burst; } else { x skill; } */
@@ -144,7 +236,7 @@ function choiceStatement(choices: Choice[], key: string, part: string): { statem
   }
   const build = (i: number): string => {
     const c = choices[i];
-    const body = `${key} ${c.actions.join(', ')};`;
+    const body = actionsToStatements(key, c.actions).join(' ');
     if (c.conditions.length === 0) return body;
     const rest = i + 1 < choices.length ? ` else { ${build(i + 1)} }` : '';
     return `if ${c.conditions.join(' && ')} { ${body} }${rest}`;
@@ -183,9 +275,10 @@ function translateTurn(
 
   const tokens: TokenResult[] = [];
   const statements: string[] = [];
+  const moves: Move[] = [];
   let plain: string[] = [];
   const flush = () => {
-    if (plain.length) statements.push(`${key} ${plain.join(', ')};`);
+    statements.push(...actionsToStatements(key, plain));
     plain = [];
   };
   for (const word of words.slice(used)) {
@@ -201,7 +294,9 @@ function translateTurn(
     }
     if (!error && choices.length === 1 && choices[0].conditions.length === 0) {
       plain.push(...choices[0].actions);
+      moves.push(...choices[0].moves.map((m) => ({ ...m, conditional: false })));
     } else if (!error) {
+      for (const c of choices) moves.push(...c.moves.map((m) => ({ ...m, conditional: true })));
       const r = choiceStatement(choices, key, word);
       if (r.error) error = r.error;
       else {
@@ -213,7 +308,7 @@ function translateTurn(
   }
   flush();
 
-  const turn: Turn = { ...base, member, tokens };
+  const turn: Turn = { ...base, member, tokens, moves };
   if (tokens.length === 0) return { ...turn, error: `${member.name}'s turn has no moves.` };
   const bad = tokens.find((t) => t.error);
   if (bad) return { ...turn, error: bad.error };

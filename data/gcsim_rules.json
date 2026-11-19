@@ -1,0 +1,501 @@
+{
+ "gcsimVersion": "v2.50.0",
+ "characters": {
+  "aetheranemo": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aethercryo": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aetherdendro": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aetherelectro": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aethergeo": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aetherhydro": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aetherpyro": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aino": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "albedo": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "alhaitham": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "aloy": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "alyosha": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "amber": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "aratakiitto": {
+   "normals": 4,
+   "charge": "not-after-full"
+  },
+  "arlecchino": {
+   "normals": 6,
+   "charge": "free"
+  },
+  "baizhu": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "barbara": {
+   "normals": 4,
+   "charge": "not-after-full"
+  },
+  "beidou": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "bennett": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "candace": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "charlotte": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "chasca": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "chevreuse": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "chiori": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "chongyun": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "citlali": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "clorinde": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "collei": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "columbina": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "cyno": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "dahlia": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "dehya": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "diluc": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "diona": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "dori": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "durin": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "emilie": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "escoffier": {
+   "normals": 3,
+   "charge": "mid-combo"
+  },
+  "eula": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "faruzan": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "fischl": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "flins": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "freminet": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "furina": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "gaming": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "ganyu": {
+   "normals": 6,
+   "charge": "free"
+  },
+  "gorou": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "hutao": {
+   "normals": 6,
+   "charge": "mid-combo"
+  },
+  "iansan": {
+   "normals": 3,
+   "charge": "mid-combo"
+  },
+  "ifa": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "illuga": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "ineffa": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "jahoda": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "jean": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "kaedeharakazuha": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "kaeya": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "kamisatoayaka": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "kamisatoayato": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "kaveh": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "keqing": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "kinich": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "kirara": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "klee": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "kujousara": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "kukishinobu": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "lanyan": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "lauma": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "layla": {
+   "normals": 3,
+   "charge": "mid-combo"
+  },
+  "linnea": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "lisa": {
+   "normals": 4,
+   "charge": "not-after-full"
+  },
+  "lynette": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "lyney": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "mavuika": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "mika": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "mona": {
+   "normals": 4,
+   "charge": "not-after-full"
+  },
+  "mualani": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "nahida": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "navia": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "nefer": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "neuvillette": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "nicole": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "nilou": {
+   "normals": 3,
+   "charge": "mid-combo"
+  },
+  "ningguang": {
+   "normals": 1,
+   "charge": "free"
+  },
+  "noelle": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "odette": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "ororon": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "prune": {
+   "normals": 3,
+   "charge": "mid-combo"
+  },
+  "qiqi": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "raidenshogun": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "razor": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "rosaria": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "sandrone": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "sangonomiyakokomi": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "sayu": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "sethos": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "shenhe": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "shikanoinheizou": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "sigewinne": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "skirk": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "sucrose": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "tartaglia": {
+   "normals": 6,
+   "charge": "after-attack"
+  },
+  "thoma": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "tighnari": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "varesa": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "varka": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "venti": {
+   "normals": 6,
+   "charge": "free"
+  },
+  "vodyanitsa": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "wanderer": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "wriothesley": {
+   "normals": 5,
+   "charge": "after-attack"
+  },
+  "xiangling": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "xianyun": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "xiao": {
+   "normals": 6,
+   "charge": "mid-combo"
+  },
+  "xilonen": {
+   "normals": 3,
+   "charge": "mid-combo"
+  },
+  "xingqiu": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "xinyan": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "yaemiko": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "yanfei": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "yaoyao": {
+   "normals": 4,
+   "charge": "mid-combo"
+  },
+  "yelan": {
+   "normals": 4,
+   "charge": "free"
+  },
+  "yoimiya": {
+   "normals": 5,
+   "charge": "free"
+  },
+  "yumemizukimizuki": {
+   "normals": 3,
+   "charge": "free"
+  },
+  "yunjin": {
+   "normals": 5,
+   "charge": "mid-combo"
+  },
+  "zhongli": {
+   "normals": 6,
+   "charge": "mid-combo"
+  },
+  "zibai": {
+   "normals": 4,
+   "charge": "mid-combo"
+  }
+ }
+}

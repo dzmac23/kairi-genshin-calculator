@@ -443,3 +443,23 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 @supports (-webkit-touch-callout: none) {
   input, select, textarea, textarea.config, textarea.rotation-input { font-size: max(16px, 1em); }
 }
+
+/* Special characters: notes, card and live rotation checks */
+.special-note { border-left: 3px solid var(--gold); background: #f2c45e12; border-radius: 6px; padding: 0.4rem 0.7rem; margin: 0.4rem 0 0.6rem; }
+.special-note p { margin: 0.15rem 0; }
+.special-list { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.75rem; }
+.special-list > li { background: #232938; border-radius: 10px; padding: 0.6rem 0.75rem; }
+.special-list p { margin: 0.25rem 0; }
+.watch-list { margin: 0.25rem 0 0; padding-left: 1.1rem; color: var(--muted); }
+.check { margin: 0.25rem 0 0; padding: 0.25rem 0.5rem; border-radius: 6px; }
+.check-stop { color: #ff8f8f; }
+.check.check-stop { background: #ff6b6b1a; border-left: 3px solid #ff6b6b; }
+.check-wait { color: var(--warn); }
+.check.check-wait { background: #f28b5e14; border-left: 3px solid var(--warn); }
+.check-tip { color: var(--accent); }
+.check.check-tip { background: #5ec8f212; border-left: 3px solid var(--accent); }
+.badge.check-stop { background: #ff6b6b26; color: #ff8f8f; }
+.badge.check-wait { background: #f28b5e26; color: var(--warn); }
+.badge.check-tip { background: #5ec8f21f; color: var(--accent); }
+.run-checks ul { margin: 0.25rem 0 0.4rem; padding-left: 1.1rem; }
+.status .explain { margin-top: 0.5rem; color: var(--text); }

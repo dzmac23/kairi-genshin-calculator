@@ -7,6 +7,7 @@ import { MAX_ENEMIES, parseHp, type SimSettings } from '../config/settings';
 import { setIterations } from '../engine/config';
 import { workerCount } from '../engine/pool';
 import { isPlaceholderConfig, PLACEHOLDER_CONFIG, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
+import { explainGcsimError } from '../engine/explain';
 import { killView, type GcsimResult } from '../results/summarize';
 import type { SimState } from '../useSimulation';
 
@@ -324,6 +325,24 @@ function TeamSource({ built, onGoToSetup }: { built?: BuildResult; onGoToSetup: 
           {n}
         </p>
       ))}
+      {built.checks.length > 0 && (
+        <div className="callout warn-callout run-checks">
+          <p className="small">
+            <strong>Rotation checks</strong>
+            {built.checks.some((c) => c.level === 'stop') ? ': gcsim will probably stop on this rotation.' : '.'}
+          </p>
+          <ul className="small">
+            {built.checks.map((c) => (
+              <li key={`${c.section}${c.index}${c.message}`} className={`check-${c.level}`}>
+                {c.section === 'opener' ? 'Opener' : 'Loop'} turn {c.index}: {c.message}
+              </li>
+            ))}
+          </ul>
+          <button className="link small" onClick={onGoToSetup}>
+            Fix it on the Setup screen
+          </button>
+        </div>
+      )}
       {built.config && (
         <details>
           <summary>Show gcsim config</summary>
@@ -364,6 +383,11 @@ function Status({ state, now, onShowResults }: { state: SimState; now: number; o
         <div className="status error">
           <strong>{state.isConfigError ? 'gcsim found a problem with the config:' : 'Something went wrong:'}</strong>
           <p>{state.message}</p>
+          {explainGcsimError(state.message) && (
+            <p className="small explain">
+              <strong>What this means:</strong> {explainGcsimError(state.message)}
+            </p>
+          )}
         </div>
       );
     case 'done': {

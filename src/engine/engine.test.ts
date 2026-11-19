@@ -168,6 +168,22 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(withEdict[10] - withJade[10]).toBeCloseTo(substat + passiveR1, 4);
   });
 
+  it('runs the special-character codes: Kinich E L E fires the cannon, Mualani E M N lands the Surging Bite', () => {
+    const team = placeholderTeam(data);
+    const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
+    team[0] = { ...team[0], character: 'Kinich', weapon: weapon('fangofthemountainking'), sets: { mode: 'none' } };
+    team[2] = { ...team[2], character: 'Mualani', weapon: weapon('surfsup'), sets: { mode: 'none' } };
+    const loop = { opener: '', loop: 'Kinich E L E > Kazuha tE P > Mualani E M N > Xilonen E N5 Q' };
+    const built = buildConfig(team, data, loop, table, DEFAULT_SETTINGS, 1);
+    expect(built.problems).toEqual([]);
+    expect(built.checks).toEqual([]);
+    const out = JSON.parse(sample(built.config!, '1'));
+    expect(out.error).toBeUndefined();
+    const hits = out.logs.filter((l: { event: string; msg: string }) => l.event === 'damage').map((l: { msg: string }) => l.msg);
+    expect(hits).toContain('Scalespiker Cannon');
+    expect(hits).toContain("Sharky's Surging Bite");
+  });
+
   it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {
     const furina = placeholderTeam(data)[2];
     const hpAt = (level: string) => {
