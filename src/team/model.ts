@@ -25,6 +25,28 @@ export const ARTIFACT_STATS: { key: ArtifactStatKey; label: string; percent: boo
   { key: 'phys%', label: 'Physical DMG Bonus', percent: true },
 ];
 
+/**
+ * Character totals, as shown on the character screen or Hoyolab (percentages as percentages).
+ * With totals, the artifact stats are worked out as total − the character's stats without
+ * artifacts, which gcsim calculates (see team/baseline.ts).
+ */
+export type TotalKey = 'hp' | 'atk' | 'def' | 'em' | 'cr' | 'cd' | 'er' | 'elem%' | 'phys%';
+
+export const TOTAL_STATS: { key: TotalKey; label: string; percent: boolean }[] = [
+  { key: 'hp', label: 'Max HP', percent: false },
+  { key: 'atk', label: 'ATK', percent: false },
+  { key: 'def', label: 'DEF', percent: false },
+  { key: 'em', label: 'Elemental Mastery', percent: false },
+  { key: 'cr', label: 'CRIT Rate', percent: true },
+  { key: 'cd', label: 'CRIT DMG', percent: true },
+  { key: 'er', label: 'Energy Recharge', percent: true },
+  { key: 'elem%', label: 'Elemental DMG Bonus', percent: true },
+  { key: 'phys%', label: 'Physical DMG Bonus', percent: true },
+];
+
+/** gcsim's stats for a build without artifacts, and which build they were worked out for. */
+export type Baseline = { key: string; stats: Record<TotalKey, number> };
+
 export type SetChoice =
   | { mode: 'none' }
   | { mode: '4pc'; set: string | null }
@@ -40,9 +62,42 @@ export type Slot = {
   refinement: number; // 1 to 5
   sets: SetChoice;
   artifacts: Partial<Record<ArtifactStatKey, number>>;
+  /** How stats are entered: artifact stats (the default) or character totals. */
+  statMode?: 'artifacts' | 'totals';
+  totals?: Partial<Record<TotalKey, number>>;
+  /** Saved working for totals: gcsim's stats without artifacts for this build. */
+  baseline?: Baseline;
 };
 
 export type Team = Slot[];
+
+/**
+ * Everything that changes a character's stats without artifacts. When it changes, the baseline
+ * has to be worked out again.
+ */
+export function baselineKey(slot: Slot): string {
+  const { character, level, constellation, talents, weapon, weaponLevel, refinement, sets } = slot;
+  return JSON.stringify({ character, level, constellation, talents, weapon, weaponLevel, refinement, sets });
+}
+
+/** Totals mode with an up-to-date baseline: the artifact stats can be worked out. */
+export function hasCurrentBaseline(slot: Slot): boolean {
+  return slot.statMode === 'totals' && slot.baseline?.key === baselineKey(slot);
+}
+
+/**
+ * The artifact part of a typed total (total − stats without artifacts), in the units shown in
+ * game. An empty total counts as "nothing from artifacts". Undefined until the baseline is ready.
+ */
+export function artifactsFromTotals(slot: Slot): Partial<Record<TotalKey, number>> | undefined {
+  if (!hasCurrentBaseline(slot)) return undefined;
+  const out: Partial<Record<TotalKey, number>> = {};
+  for (const { key } of TOTAL_STATS) {
+    const total = slot.totals?.[key];
+    out[key] = total === undefined ? 0 : total - slot.baseline!.stats[key];
+  }
+  return out;
+}
 
 export function emptySlot(): Slot {
   return {
@@ -104,7 +159,20 @@ export function cleanSlot(raw: unknown): Slot {
       if (isNum(v)) artifacts[key] = v;
     }
   }
+  const totals: Slot['totals'] = {};
+  if (s.totals && typeof s.totals === 'object') {
+    for (const { key } of TOTAL_STATS) {
+      const v = (s.totals as Record<string, unknown>)[key];
+      if (isNum(v)) totals[key] = v;
+    }
+  }
+  const b = s.baseline as Baseline | undefined;
+  const baseline =
+    b && typeof b === 'object' && typeof b.key === 'string' && b.stats && TOTAL_STATS.every(({ key }) => isNum(b.stats[key]))
+      ? { key: b.key, stats: { ...b.stats } }
+      : undefined;
   return {
+    ...(s.statMode === 'totals' ? { statMode: 'totals' as const, totals, ...(baseline ? { baseline } : {}) } : {}),
     character: str(s.character),
     level: level(s.level, CHARACTER_LEVELS, d.level),
     constellation: isNum(s.constellation) ? clamp(s.constellation, 0, 6) : d.constellation,

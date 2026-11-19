@@ -23,6 +23,7 @@ import ResultsScreen from './screens/ResultsScreen';
 import RunScreen, { type RunSource } from './screens/RunScreen';
 import TeamScreen from './screens/TeamScreen';
 import { emptySlot } from './team/model';
+import { useBaselines } from './team/useBaselines';
 import { useTeam } from './team/useTeam';
 import { usePersistentState } from './usePersistentState';
 import { useSimulation, type FinishedRun } from './useSimulation';
@@ -64,6 +65,8 @@ export default function App() {
     typeof v === 'string' ? (OLD_DEFAULT_TOKEN_TABLES.includes(v) ? DEFAULT_TOKEN_TABLE : v) : undefined,
   );
   const data = useGameData();
+  // Character totals → artifact stats: gcsim works out each such character's stats without artifacts.
+  const baselineErrors = useBaselines(team, setTeam, data);
   const parsedTable = useMemo(() => parseTokenTable(tokenTable), [tokenTable]);
   // The config built from the Setup screen and the fight settings (iterations are set on the Run screen).
   const built = useMemo((): BuildResult | undefined => {
@@ -355,6 +358,7 @@ export default function App() {
             <TeamScreen
               team={team}
               onChange={setTeam}
+              baselineErrors={baselineErrors}
               onClear={teamActions.clear}
               clearNeedsConfirm={activeTeam ? teamDirty : hasTeam}
               saveBar={

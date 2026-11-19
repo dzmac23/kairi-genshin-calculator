@@ -22,7 +22,9 @@ export type SavedTeam = {
 /** Which saved team and rotation the Setup screen was last loaded from. */
 export type ActiveSaved = { teamId?: string; rotationId?: string };
 
-const normaliseTeam = (team: Team) => JSON.stringify(team.map((s) => ({ ...emptySlot(), ...s })));
+// The baseline is saved working (gcsim's stats without artifacts), not something the person typed,
+// so it doesn't count as a change.
+const normaliseTeam = (team: Team) => JSON.stringify(team.map(({ baseline: _, ...s }) => ({ ...emptySlot(), ...s })));
 
 /** True when two teams have the same builds (used to tell whether the current team was edited). */
 export function sameTeam(a: Team, b: Team): boolean {

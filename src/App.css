@@ -423,3 +423,7 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .resist-list li.low strong { color: var(--good); }
 .run-dps-sub { display: block; font-weight: 400; text-align: right; }
 .hp-field input { width: 100%; }
+.totals-table { font-size: 0.82rem; margin-top: 0.75rem; }
+.totals-table th { white-space: normal; line-height: 1.2; }
+.totals-table td:first-child { padding-right: 0.3rem; }
+.totals-table .num { white-space: nowrap; padding-left: 0.3rem; padding-right: 0; }

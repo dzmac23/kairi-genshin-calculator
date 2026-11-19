@@ -11,6 +11,8 @@ import { loadGameData, type GameData } from '../data/gameData';
 import { DEFAULT_TOKEN_TABLE, parseTokenTable } from '../rotation/tokens';
 import { measureTiming } from '../rotation/timing';
 import { placeholderTeam } from '../team/placeholderTeam.testutil';
+import { snapshotConfig, statsFromSnapshot } from '../team/baseline';
+import { baselineKey, type Slot } from '../team/model';
 
 const engineDir = resolve('public/gcsim');
 const hasEngine = existsSync(`${engineDir}/main.wasm`);
@@ -75,6 +77,37 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     for (let i = 0; i < 100; i++) aggregate(simulate() as Uint8Array);
     const dps = JSON.parse((flush() as { result: string }).result).statistics.dps.mean;
     expect(Math.abs(dps - 35126) / 35126).toBeLessThan(0.1);
+  });
+
+  it('gives the same config from character totals as from the artifact stats they came from', () => {
+    const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
+    const snap = (slot: Slot, withStats: boolean) => {
+      const out = JSON.parse(sample(snapshotConfig(slot, data, withStats), '1'));
+      expect(out.error).toBeUndefined();
+      return statsFromSnapshot(out.character_details[0].snapshot, data.character.get(slot.character!)!.element);
+    };
+    const original = placeholderTeam(data);
+    // Each character's totals as the character screen would show them, then entered as totals.
+    const fromTotals = original.map((slot): Slot => {
+      const withTotals: Slot = { ...slot, statMode: 'totals', totals: snap(slot, true) };
+      return { ...withTotals, baseline: { key: baselineKey(withTotals), stats: snap(slot, false) } };
+    });
+    // Kazuha's totals include Viridescent's 2-piece Anemo bonus, which must not be counted twice.
+    expect(fromTotals[1].totals!['elem%']).toBeCloseTo(15, 1);
+    expect(fromTotals[1].baseline!.stats['elem%']).toBeCloseTo(15, 1);
+    const a = buildConfig(original, data, plan, table, DEFAULT_SETTINGS, 100);
+    const b = buildConfig(fromTotals, data, plan, table, DEFAULT_SETTINGS, 100);
+    expect(b.problems).toEqual([]);
+    const dps = (config: string) => {
+      expect(initializeWorker(config)).toBeNull();
+      expect(error(initializeAggregator(config))).toBeUndefined();
+      for (let i = 0; i < 100; i++) aggregate(simulate() as Uint8Array);
+      return JSON.parse((flush() as { result: string }).result).statistics.dps.mean;
+    };
+    // Only rounding to the game's display precision (0.1%, 1 HP) differs, so DPS stays within 0.5%.
+    const da = dps(a.config!);
+    const db = dps(b.config!);
+    expect(Math.abs(db - da) / da).toBeLessThan(0.005);
   });
 
   it('runs until the enemy dies when it has HP, and stops at the time limit when it does not die', () => {

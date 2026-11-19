@@ -8,7 +8,7 @@
 
 import type { RunRecord } from '../history/model';
 import { characterName, summarize, type GcsimResult, type ResultsView } from '../results/summarize';
-import { ARTIFACT_STATS, type Slot } from '../team/model';
+import { ARTIFACT_STATS, TOTAL_STATS, type Slot } from '../team/model';
 
 /** Scenario A compared with Scenario B. */
 export type Verdict = 'a-better' | 'a-worse' | 'too-close';
@@ -158,10 +158,23 @@ function slotChanges(n: string, a: Slot, b: Slot): string[] {
   const sets = (s: Slot) =>
     s.sets.mode === '4pc' ? `4pc ${s.sets.set ?? '?'}` : s.sets.mode === '2+2' ? `2pc ${s.sets.first ?? '?'} + 2pc ${s.sets.second ?? '?'}` : 'no set';
   if (sets(a) !== sets(b)) out.push(`${n}: ${sets(a)} → ${sets(b)}`);
-  for (const stat of ARTIFACT_STATS) {
-    const va = a.artifacts[stat.key] ?? 0;
-    const vb = b.artifacts[stat.key] ?? 0;
-    if (Math.abs(va - vb) > 1e-9) out.push(`${n}: ${stat.label} ${r1(va)}${stat.percent ? '%' : ''} → ${r1(vb)}${stat.percent ? '%' : ''}`);
+  const modeA = a.statMode ?? 'artifacts';
+  const modeB = b.statMode ?? 'artifacts';
+  if (modeA !== modeB) {
+    out.push(`${n}: stats entered as ${modeA === 'totals' ? 'character totals' : 'artifact stats'} → ${modeB === 'totals' ? 'character totals' : 'artifact stats'}`);
+  } else if (modeA === 'totals') {
+    for (const stat of TOTAL_STATS) {
+      const va = a.totals?.[stat.key] ?? 0;
+      const vb = b.totals?.[stat.key] ?? 0;
+      const label = stat.key === 'elem%' ? 'Elemental DMG Bonus' : stat.label;
+      if (Math.abs(va - vb) > 1e-9) out.push(`${n}: total ${label} ${r1(va)}${stat.percent ? '%' : ''} → ${r1(vb)}${stat.percent ? '%' : ''}`);
+    }
+  } else {
+    for (const stat of ARTIFACT_STATS) {
+      const va = a.artifacts[stat.key] ?? 0;
+      const vb = b.artifacts[stat.key] ?? 0;
+      if (Math.abs(va - vb) > 1e-9) out.push(`${n}: ${stat.label} ${r1(va)}${stat.percent ? '%' : ''} → ${r1(vb)}${stat.percent ? '%' : ''}`);
+    }
   }
   return out;
 }

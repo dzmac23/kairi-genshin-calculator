@@ -7,7 +7,7 @@
 // itself, and applies C3/C5 talent boosts itself, so talents are base levels capped at 10.
 
 import type { GameData } from '../data/gameData';
-import { levelToGcsim, type ArtifactStatKey, type Slot, type Team } from './model';
+import { artifactsFromTotals, levelToGcsim, TOTAL_STATS, type ArtifactStatKey, type Slot, type Team } from './model';
 import { artifactValue } from './stats';
 
 export type TeamProblem = { slot: number; message: string; blocking: boolean };
@@ -19,7 +19,8 @@ export function num(value: number): string {
 
 const STATS_ORDER: ArtifactStatKey[] = ['atk%', 'atk', 'hp%', 'hp', 'def%', 'def', 'em', 'cr', 'cd', 'er'];
 
-function slotLines(slot: Slot, data: GameData): string[] {
+/** A slot's gcsim lines. Without `withStats`, the artifact stats line is left out. */
+export function slotLines(slot: Slot, data: GameData, withStats = true): string[] {
   const character = data.character.get(slot.character!)!;
   const key = character.gcsim_key!;
   const talents = slot.talents.map((t) => Math.min(10, Math.max(1, Math.round(t)))).join(',');
@@ -39,6 +40,7 @@ function slotLines(slot: Slot, data: GameData): string[] {
     }
   }
 
+  if (!withStats) return lines;
   const stats = STATS_ORDER.map((k) => `${k}=${num(artifactValue(slot, k))}`);
   stats.push(`${character.element.toLowerCase()}%=${num(artifactValue(slot, 'elem%'))}`);
   stats.push(`phys%=${num(artifactValue(slot, 'phys%'))}`);
@@ -76,6 +78,24 @@ export function checkTeam(team: Team, data: GameData): TeamProblem[] {
       problems.push({ slot: i, message: `${weapon.name} is not in gcsim yet; pick another weapon.`, blocking: true });
     } else if (weapon.type !== character.weapon_type) {
       problems.push({ slot: i, message: `${character.name} can't use a ${weapon.type.toLowerCase()}.`, blocking: true });
+    }
+    if (slot.statMode === 'totals' && weapon?.gcsim_key) {
+      const fromArtifacts = artifactsFromTotals(slot);
+      if (!fromArtifacts) {
+        problems.push({ slot: i, message: `Working out ${character.name}'s artifact stats from the totals…`, blocking: true });
+      } else {
+        for (const { key, label, percent } of TOTAL_STATS) {
+          if ((fromArtifacts[key] ?? 0) < (percent ? -0.05 : -0.5)) {
+            const name = key === 'elem%' ? `${character.element} DMG Bonus` : label;
+            const show = (v: number) => (percent ? `${v.toFixed(1)}%` : Math.round(v).toLocaleString('en-US'));
+            problems.push({
+              slot: i,
+              message: `${character.name}'s total ${name} (${show(slot.totals![key]!)}) is lower than without any artifacts (${show(slot.baseline!.stats[key])}). Check the total, level, weapon, refinement and sets.`,
+              blocking: true,
+            });
+          }
+        }
+      }
     }
   });
   if (!team.some((s) => s.character && data.character.get(s.character)?.gcsim_key)) {
