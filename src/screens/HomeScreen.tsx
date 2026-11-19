@@ -15,7 +15,7 @@ type Props = {
 
 const STEPS: { screen: HomeTarget; title: string; text: string }[] = [
   { screen: 'Setup', title: 'Set up the team and rotation', text: 'Pick four characters, their weapons, artifact sets and stats, then type the rotation the community way (Furina E D Q > Skirk tE N5 Q …). Save the team: its first rotation becomes its main one.' },
-  { screen: 'Run', title: 'Run it', text: 'Switch team or rotation in one tap, set the fight (length, enemies, energy), and run 100, 500 or 1,000 fights.' },
+  { screen: 'Run', title: 'Run it', text: 'Switch team or rotation in one tap, set the fight (enemy, length, energy), and run 100, 500 or 1,000 fights.' },
   { screen: 'Results', title: 'Read the results', text: 'Team DPS, who does the damage, time lost waiting, rotation timing, damage over the fight, energy.' },
   { screen: 'Compare', title: 'Compare', text: 'Change one thing, run again, and see whether it is really better or just luck.' },
 ];

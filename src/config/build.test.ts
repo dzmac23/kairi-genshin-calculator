@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { loadGameData, type GameData } from '../data/gameData';
+import { enemySummary, loadGameData, type GameData } from '../data/gameData';
 import { translateCodes, translateRotation, type RotationText, type TeamMember } from '../rotation/notation';
 import { DEFAULT_TOKEN_TABLE, parseTokenTable } from '../rotation/tokens';
 import { emptySlot, type Team } from '../team/model';
@@ -40,6 +40,37 @@ describe('buildConfig (Phase 1 acceptance check)', () => {
     expect(result.config).not.toContain('energy every');
     // Never give enemies HP: gcsim would then run until they die instead of for the set duration.
     expect(targets.some((l) => l.includes('hp='))).toBe(false);
+  });
+
+  it("writes an enemy's real resistances (and freeze resistance) instead of one resistance for everything", () => {
+    const result = buildConfig(team, data, PLAN_ROTATION, table, { ...DEFAULT_SETTINGS, enemy: 'childe', enemies: 2, enemyResist: 25 }, 100);
+    const targets = lines(result.config!).filter((l) => l.startsWith('target'));
+    expect(targets).toEqual([
+      'target lvl=100 pyro=0 hydro=0.7 electro=0.7 cryo=0 anemo=0 geo=0 dendro=0 physical=0 freeze_resist=1 radius=2 pos=2.4,0;',
+      'target lvl=100 pyro=0 hydro=0.7 electro=0.7 cryo=0 anemo=0 geo=0 dendro=0 physical=0 freeze_resist=1 radius=2 pos=2.4,4.1;',
+    ]);
+    // resist= would be added on top of the per-element values, so it must not appear.
+    expect(targets.some((l) => l.includes('resist=0'))).toBe(false);
+    // An enemy that can be frozen gets no freeze_resist.
+    const slime = buildConfig(team, data, PLAN_ROTATION, table, { ...DEFAULT_SETTINGS, enemy: 'hydroslime' }, 100);
+    expect(slime.config).not.toContain('freeze_resist');
+  });
+
+  it('blocks a run when the saved enemy is not in the enemy list', () => {
+    const result = buildConfig(team, data, PLAN_ROTATION, table, { ...DEFAULT_SETTINGS, enemy: 'nosuchenemy' }, 100);
+    expect(result.config).toBeUndefined();
+    expect(result.problems[0]).toMatch(/"nosuchenemy" isn't in this version's enemy list/);
+  });
+
+  it('describes enemies by their unusual resistances', () => {
+    expect(enemySummary(data.enemy.get('childe')!)).toBe("Pyro 0% · Hydro 70% · Electro 70% · Cryo 0% · Anemo 0% · Geo 0% · Dendro 0% · Physical 0% · can't be frozen");
+    expect(enemySummary(data.enemy.get('cryohypostasis')!)).toBe("10% to everything · can't be frozen");
+    expect(enemySummary(data.enemy.get('azhdaha')!)).toBe("Geo 70% · Physical 40% · can't be frozen");
+  });
+
+  it('treats settings saved before the enemy library as a training dummy', () => {
+    expect(cleanSettings({ duration: 120, enemyResist: 10 }).enemy).toBeNull();
+    expect(cleanSettings({ enemy: 'childe' }).enemy).toBe('childe');
   });
 
   it('keeps every enemy at least 4 m from the others (radius 2 each)', () => {

@@ -3,6 +3,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { Legend, LineChart, PieChart, SegmentedBar, slotClass, type Part, type Slice } from '../components/Charts';
+import { resistPercent, useGameData } from '../data/gameData';
 import { isPlaceholderConfig, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
 import { FAILURES, summarize, type GcsimResult, type ResultsView, type Stat } from '../results/summarize';
 import type { RotationTiming, Span, TurnTiming } from '../rotation/timing';
@@ -250,6 +251,14 @@ function Info({ children }: { children: ReactNode }) {
 }
 
 function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
+  const data = useGameData();
+  const settings = run.meta.settings;
+  // Runs from the Setup screen record their enemy; pasted configs don't.
+  const enemy = settings
+    ? settings.enemy
+      ? (data?.enemy.get(settings.enemy)?.name ?? settings.enemy)
+      : `Training dummy (${resistPercent(settings.enemyResist / 100)} resistance)`
+    : undefined;
   return (
     <section className="card">
       <h2>Team DPS</h2>
@@ -275,6 +284,16 @@ function Summary({ view, run }: { view: ResultsView; run: FinishedRun }) {
         <dd>{view.iterations.toLocaleString()}</dd>
         <dt>Fight length</dt>
         <dd>{secs(view.duration)}</dd>
+        {enemy && (
+          <>
+            <dt>Enemy</dt>
+            <dd>
+              {enemy}
+              {settings && `, level ${settings.enemyLevel}`}
+              {settings && settings.enemies > 1 && ` ×${settings.enemies}`}
+            </dd>
+          </>
+        )}
       </dl>
       <p className="muted small">
         Finished {run.finishedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} in {run.seconds.toFixed(1)} s.

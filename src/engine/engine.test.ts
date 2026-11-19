@@ -76,4 +76,25 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     const dps = JSON.parse((flush() as { result: string }).result).statistics.dps.mean;
     expect(Math.abs(dps - 35126) / 35126).toBeLessThan(0.1);
   });
+
+  it("uses an enemy's real resistances (including negative ones and 200%) and freeze resistance", () => {
+    const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
+    const run = (enemy: string | null) => {
+      const built = buildConfig(placeholderTeam(data), data, plan, table, { ...DEFAULT_SETTINGS, enemy }, 20);
+      expect(built.problems).toEqual([]);
+      expect(error(initializeAggregator(built.config!))).toBeUndefined();
+      expect(initializeWorker(built.config!)).toBeNull();
+      for (let i = 0; i < 20; i++) aggregate(simulate() as Uint8Array);
+      return JSON.parse((flush() as { result: string }).result);
+    };
+    const dummy = run(null).statistics.dps.mean;
+    // Childe: 70% Hydro and Electro resistance, 0% to the rest, can't be frozen. This team is mostly Hydro.
+    const childe = run('childe');
+    expect(childe.target_details[0].resist).toMatchObject({ hydro: 0.7, electro: 0.7, pyro: 0, physical: 0 });
+    expect(childe.statistics.dps.mean).toBeLessThan(dummy * 0.8);
+    // 200% to everything: far less damage again.
+    expect(run('mystifyingmegachurl').statistics.dps.mean).toBeLessThan(childe.statistics.dps.mean * 0.5);
+    // Negative resistances are passed on as they are (Hydro Cicin: -50% Physical).
+    expect(run('hydrocicin').target_details[0].resist).toMatchObject({ physical: -0.5, hydro: 0.5 });
+  });
 });

@@ -405,6 +405,7 @@ export default function App() {
             built={built}
             settings={settings}
             onSettingsChange={setSettings}
+            enemies={data?.enemies}
             switcher={switcher}
             onGoToSetup={() => setScreen('Setup')}
             config={config}

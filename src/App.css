@@ -413,3 +413,11 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .save-bar { margin: 0.25rem 0 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid #ffffff14; }
 .save-bar .name-chips { margin: 0.35rem 0 0.5rem; }
 .save-bar label.file-button { margin-top: 0; }
+
+/* Fight settings: enemy library */
+.enemy-card { background: #232938; border-radius: 10px; padding: 0.6rem 0.75rem; margin: 0.25rem 0 0.75rem; }
+.enemy-card p { margin: 0.35rem 0 0; }
+.resist-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
+.resist-list li { display: flex; flex-direction: column; align-items: flex-start; padding: 0.25rem 0.4rem; border-radius: 6px; background: #ffffff08; font-variant-numeric: tabular-nums; }
+.resist-list li.high strong { color: var(--warn); }
+.resist-list li.low strong { color: var(--good); }

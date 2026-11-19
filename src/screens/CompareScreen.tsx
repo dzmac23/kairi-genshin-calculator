@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Legend, SegmentedBar, slotClass, type Part } from '../components/Charts';
 import { compareRuns, verdictText, type Comparison } from '../compare/compare';
+import { useGameData } from '../data/gameData';
 import { runDps, runName, type RunRecord } from '../history/model';
 import { readTransferFile } from '../transfer';
 
@@ -59,7 +60,11 @@ function Info({ children }: { children: ReactNode }) {
 }
 
 export default function CompareScreen(p: Props) {
-  const comparison = useMemo(() => (p.a && p.b ? compareRuns(p.a, p.b) : undefined), [p.a, p.b]);
+  const data = useGameData();
+  const comparison = useMemo(
+    () => (p.a && p.b ? compareRuns(p.a, p.b, (k) => data?.enemy.get(k)?.name ?? k) : undefined),
+    [p.a, p.b, data],
+  );
   return (
     <>
       <section className="card">
