@@ -100,6 +100,33 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(result.incomplete_characters).toContain('linnea');
   });
 
+  it.skipIf(!enginePatches.includes('nefer'))('simulates Nefer from patches/nefer.patch in a Lunar-Bloom team, marked incomplete', () => {
+    const team = placeholderTeam(data);
+    const catalyst = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
+    team[0] = { ...team[0], character: 'Nefer', weapon: catalyst('sacrificialfragments'), sets: { mode: 'none' }, artifacts: { em: 300, cr: 50, cd: 100 } };
+    team[3] = { ...team[3], character: 'Lauma', weapon: catalyst('favoniuscodex'), sets: { mode: 'none' }, artifacts: { em: 400, er: 30 } };
+    const loop = { opener: '', loop: 'Lauma E Q > Furina tE d Q > Kazuha tE P > Nefer E Q C C' };
+    const built = buildConfig(team, data, loop, table, DEFAULT_SETTINGS, 20);
+    expect(built.problems).toEqual([]);
+    expect(built.config).toContain('nefer char lvl=');
+    expect(error(initializeAggregator(built.config!))).toBeUndefined();
+    expect(initializeWorker(built.config!)).toBeNull();
+    for (let i = 0; i < 20; i++) aggregate(simulate() as Uint8Array);
+    const result = JSON.parse((flush() as { result: string }).result);
+    const nefer = result.character_details.findIndex((c: { name: string }) => c.name === 'nefer');
+    expect(result.statistics.character_dps[nefer].mean).toBeGreaterThan(0);
+    expect(result.incomplete_characters).toContain('nefer');
+  });
+
+  it.skipIf(!enginePatches.includes('nefer'))('gives a clear gcsim error, not a crash, if Nefer plunges (her plunge was removed)', () => {
+    const team = placeholderTeam(data);
+    team[0] = { ...team[0], character: 'Nefer', weapon: data.weapons.find((w) => w.gcsim_key === 'sacrificialfragments')!.name, sets: { mode: 'none' } };
+    const built = buildConfig(team, data, { opener: '', loop: 'Nefer J P > Furina tE' }, table, DEFAULT_SETTINGS, 5);
+    expect(built.problems).toEqual([]);
+    const out = JSON.parse(sample(built.config!, '1'));
+    expect(JSON.stringify(out)).toMatch(/not implemented/);
+  });
+
   it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {
     const furina = placeholderTeam(data)[2];
     const hpAt = (level: string) => {

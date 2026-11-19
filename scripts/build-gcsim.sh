@@ -32,8 +32,16 @@ fi
 commit="$(git -C "$src" rev-parse HEAD)"
 
 # Characters gcsim doesn't have yet, from unmerged gcsim pull requests: every patches/<name>.patch
-# (see patches/README.md). A patch already applied (a local re-build) is left alone; if a patch no
-# longer applies because gcsim now includes that character itself, it is skipped with a note.
+# (see patches/README.md). If a patch no longer applies because gcsim now includes that character
+# itself, it is skipped with a note.
+#
+# The copy of gcsim this script downloaded (.cache/) is put back to the clean tag first, so edited
+# patches are applied fresh. A checkout passed in GCSIM_SRC is never reset: there, a patch that is
+# already applied is left alone.
+if [ -z "${GCSIM_SRC:-}" ]; then
+  git -C "$src" checkout --quiet -- .
+  git -C "$src" clean --quiet -fd
+fi
 patches=()
 for patch in "$repo_root"/patches/*.patch; do
   [ -e "$patch" ] || continue
