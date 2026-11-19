@@ -1,0 +1,484 @@
+{
+ "note": "Special rotation mechanics per gcsim character (key), written from gcsim v2.50.0's code (paths under internal/characters/). Shown on the Setup screen when the character is in the team.",
+ "characters": {
+  "aethergeo": {
+   "special": "Short hold is its own skill version (the shortest possible hold).",
+   "howTo": "sE (short hold) or tE",
+   "watch": [],
+   "source": "traveler/common/geo/skill.go:61"
+  },
+  "alhaitham": {
+   "special": "Low plunge right after his hold skill; mirrors from his skill power his attacks.",
+   "howTo": "hE lP",
+   "watch": [
+    "Mirrors are lost when he swaps out."
+   ],
+   "source": "alhaitham/plunge.go, alhaitham.go"
+  },
+  "bennett": {
+   "special": "Skill has hold levels.",
+   "howTo": "tE · hE (level 1) · hE(2) (level 2)",
+   "watch": [],
+   "source": "bennett/skill.go"
+  },
+  "candace": {
+   "special": "Tap or hold skill; a perfect hold for her ascension 1.",
+   "howTo": "tE · hE · E(perfect=1)",
+   "watch": [],
+   "source": "candace/skill.go"
+  },
+  "charlotte": {
+   "special": "Tap and hold skills are different moves; the hold can be any length.",
+   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "watch": [],
+   "source": "charlotte/skill.go"
+  },
+  "chasca": {
+   "special": "Skill starts her Nightsoul ride: aims become multi-bullet Shadowhunt Shells; skill again ends it.",
+   "howTo": "E Aim … E · bullet count: Aim(bullets=4)",
+   "watch": [
+    "Press E to end the ride before swapping, or gcsim waits (up to about 10 s).",
+    "No jump during the ride: the run stops."
+   ],
+   "source": "chasca/chasca.go:108, jump.go:12"
+  },
+  "chevreuse": {
+   "special": "Tap and hold skills are different moves; the hold can be any length.",
+   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "watch": [],
+   "source": "chevreuse/skill.go"
+  },
+  "chiori": {
+   "special": "Skill pressed again (needs ascension 1) is a recast that swaps to the next character.",
+   "howTo": "E E",
+   "watch": [
+    "Low plunge only right after a hold skill."
+   ],
+   "source": "chiori/skill.go:75, plunge.go:41"
+  },
+  "clorinde": {
+   "special": "Her skill state changes Normal Attack and Skill, depending on her Bond of Life.",
+   "howTo": "E N… E",
+   "watch": [],
+   "source": "clorinde/attack.go, skill.go"
+  },
+  "columbina": {
+   "special": "Charged Attack with Verdant Dew becomes Moondew Cleanse.",
+   "howTo": "C (when dew is available)",
+   "watch": [],
+   "source": "columbina/charge.go:45"
+  },
+  "cyno": {
+   "special": "His burst changes Normal and Charged Attacks, plunges and skill; skill during burst extends it.",
+   "howTo": "Q N… E N…",
+   "watch": [
+    "At most 2 extensions per burst.",
+    "Swapping out ends the burst."
+   ],
+   "source": "cyno/burst.go, skill.go:162"
+  },
+  "dahlia": {
+   "special": "Short hold is its own skill version.",
+   "howTo": "sE (short hold) or tE",
+   "watch": [],
+   "source": "dahlia/skill.go:46"
+  },
+  "dehya": {
+   "special": "Skill again moves her field; burst punches; dash then jump during burst is the kick.",
+   "howTo": "E E · Q N… · D J",
+   "watch": [
+    "No jump during the kick: the run stops."
+   ],
+   "source": "dehya/skill.go, jump.go:20"
+  },
+  "diluc": {
+   "special": "Three-part skill chain.",
+   "howTo": "E E E (within 4 s)",
+   "watch": [],
+   "source": "diluc/skill.go"
+  },
+  "diona": {
+   "special": "Tap and hold skills are different moves.",
+   "howTo": "tE or hE",
+   "watch": [],
+   "source": "diona/skill.go"
+  },
+  "durin": {
+   "special": "After his skill, Skill again (white) or Normal Attack (black) decides his next burst.",
+   "howTo": "E E or E N",
+   "watch": [],
+   "source": "durin/skill.go, burst.go:47"
+  },
+  "fischl": {
+   "special": "Oz can be re-summoned (recast) while he's out.",
+   "howTo": "recast: E(recast=1)",
+   "watch": [
+    "A plain E while Oz is out makes gcsim wait until Oz leaves."
+   ],
+   "source": "fischl/fischl.go:89"
+  },
+  "flins": {
+   "special": "Skill state: Electro attacks; skill again is Northland Spearstorm, then burst is Thunderous Symphony.",
+   "howTo": "E N… E Q",
+   "watch": [
+    "Thunderous Symphony needs 30 energy (gcsim waits).",
+    "Swapping out cancels it all."
+   ],
+   "source": "flins/skill.go, flins.go:53"
+  },
+  "freminet": {
+   "special": "Normal Attacks after his skill build pressure; skill again detonates.",
+   "howTo": "E N N N N E",
+   "watch": [],
+   "source": "freminet/skill.go"
+  },
+  "gaming": {
+   "special": "Plunge right after his skill is Charmed Cloudstrider.",
+   "howTo": "E P",
+   "watch": [
+    "It costs HP."
+   ],
+   "source": "gaming/plunge.go:76"
+  },
+  "hutao": {
+   "special": "Her skill (Paramita) changes her attacks; her burst is stronger at 50% HP or less.",
+   "howTo": "E N… C…",
+   "watch": [
+    "Swapping out ends Paramita."
+   ],
+   "source": "hutao/skill.go, burst.go"
+  },
+  "iansan": {
+   "special": "Normal Attack right after her skill becomes her Charged Attack (Swift Stormflight).",
+   "howTo": "E N",
+   "watch": [
+    "Dash and jump cost Nightsoul points."
+   ],
+   "source": "iansan/attack.go:42"
+  },
+  "ifa": {
+   "special": "Skill starts his Nightsoul state: attacks become Tonic Shots; hold skill again is the exit plunge.",
+   "howTo": "E N… hE",
+   "watch": [
+    "Press E to end it before swapping, or gcsim waits.",
+    "No jump in Nightsoul: the run stops."
+   ],
+   "source": "ifa/ifa.go:85, jump.go:12"
+  },
+  "illuga": {
+   "special": "Tap and hold skills are different moves.",
+   "howTo": "tE or hE",
+   "watch": [],
+   "source": "illuga/skill.go"
+  },
+  "jean": {
+   "special": "Tap and hold skills; her C1 needs a hold of at least 60 frames.",
+   "howTo": "tE or hE · for C1: hE(60)",
+   "watch": [
+    "At C1 or higher, hE alone (1 frame) doesn't trigger C1."
+   ],
+   "source": "jean/skill.go"
+  },
+  "kaedeharakazuha": {
+   "special": "High plunge right after his skill is Soumon Swordsmanship.",
+   "howTo": "tE P or hE P",
+   "watch": [
+    "Use P, not lP: a low plunge after his skill stops the run."
+   ],
+   "source": "kazuha/plunge.go:88"
+  },
+  "kamisatoayato": {
+   "special": "His skill state turns Normal Attacks into Shunsuiken slashes.",
+   "howTo": "E N…",
+   "watch": [
+    "No Charged Attack or plunge during his skill: the run stops."
+   ],
+   "source": "ayato/charge.go:27, plunge.go"
+  },
+  "keqing": {
+   "special": "Stiletto: skill again teleports, or Charged Attack is Thunderclap Slash.",
+   "howTo": "E E or E C",
+   "watch": [],
+   "source": "keqing/skill.go, charge.go:57"
+  },
+  "kinich": {
+   "special": "Grapple: Normal Attacks (Loop Shots) fill a 20-point bar; skill on a full bar fires the Scalespiker Cannon.",
+   "howTo": "E L E (L = Loop Shot until the bar is full)",
+   "watch": [
+    "Skill on a bar that isn't full stops the run.",
+    "No Charged Attack or plunge while grappling: the run stops.",
+    "Fire the cannon with a plain E: gcsim makes a held cannon 18 frames faster than it really is.",
+    "In game a short hold enters the grapple faster than a tap; gcsim times them the same, so E works. A full hold is manual aiming and only adds time here.",
+    "Swapping out cancels the grapple."
+   ],
+   "source": "kinich/skill.go:52-170, kinich.go:116"
+  },
+  "kirara": {
+   "special": "Short hold is its own skill version (Flipclaw Strike); a hold can also be any length.",
+   "howTo": "sE (short hold) · tE · hE(60) for a longer hold",
+   "watch": [
+    "hE alone is a 1-frame hold, not the short hold: use sE."
+   ],
+   "source": "kirara/skill.go:62"
+  },
+  "lanyan": {
+   "special": "Tap and hold skills are different moves; the hold can be any length.",
+   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "watch": [],
+   "source": "lanyan/skill.go"
+  },
+  "lauma": {
+   "special": "Hold skill uses Verdant Dew; Charged Attack turns her into a deer (walk only).",
+   "howTo": "hE · C W…",
+   "watch": [
+    "Hold skill without Verdant Dew stops the run.",
+    "No dash or jump as a deer: the run stops."
+   ],
+   "source": "lauma/skill.go:111, dash.go:11, jump.go:11"
+  },
+  "linnea": {
+   "special": "Quick skill presses; the 4th is Lumi Million Ton Crush.",
+   "howTo": "E E E E",
+   "watch": [
+    "Each press within 0.6 s of the last."
+   ],
+   "source": "linnea/skill.go:62-176"
+  },
+  "lisa": {
+   "special": "Tap and hold skills are different moves.",
+   "howTo": "tE or hE",
+   "watch": [],
+   "source": "lisa/skill.go"
+  },
+  "lynette": {
+   "special": "Tap and hold skills are different moves; the hold can be any length.",
+   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "watch": [],
+   "source": "lynette/skill.go"
+  },
+  "lyney": {
+   "special": "Aim is the Prop Arrow (costs HP, builds stacks); skill during burst ends it early.",
+   "howTo": "Aim · Q … E",
+   "watch": [
+    "No aim right after his 4th Normal Attack: the run stops."
+   ],
+   "source": "lyney/lyney.go:98"
+  },
+  "mavuika": {
+   "special": "Tap skill is the ring, hold is the bike; recast switches; the bike changes her attacks; burst needs 100 Fighting Spirit.",
+   "howTo": "tE / hE · recast: E(recast=1) · Q",
+   "watch": [
+    "Plunge only after a bike jump (W J P) or with Xianyun.",
+    "Burst waits for 100 Fighting Spirit."
+   ],
+   "source": "mavuika/skill.go, mavuika.go:99"
+  },
+  "mona": {
+   "special": "Her dash builds stacks for her passives and C6.",
+   "howTo": "as usual, with D",
+   "watch": [],
+   "source": "mona/asc.go, cons.go"
+  },
+  "mualani": {
+   "special": "Surfing: moving near enemies gives up to 3 stacks; Normal Attack is the bite (Surging Bite at 3).",
+   "howTo": "E M N (M = keep surfing until 3 stacks)",
+   "watch": [
+    "The time spent moving counts, not the number of moves: use M.",
+    "No Charged Attack while surfing: the run stops.",
+    "Swapping out ends surfing."
+   ],
+   "source": "mualani/skill.go:157-210, attack.go:117, mualani.go:111"
+  },
+  "nahida": {
+   "special": "Tap and hold skills are different moves; hE is the shortest hold (16 frames).",
+   "howTo": "tE or hE · longer hold: hE(60)",
+   "watch": [],
+   "source": "nahida/skill.go:89"
+  },
+  "navia": {
+   "special": "Hold skill aims; hE is the shortest hold.",
+   "howTo": "tE or hE · longer aim: hE(60)",
+   "watch": [],
+   "source": "navia/skill.go:117"
+  },
+  "nefer": {
+   "special": "Charged Attack is Phantasm Performance when it's ready; a held Charged Attack is Slither.",
+   "howTo": "E C · C(hold=60)",
+   "watch": [
+    "Needs Verdant Dew.",
+    "Swapping out clears Shadow Dance."
+   ],
+   "source": "nefer/charge.go:80, nefer.go:86"
+  },
+  "neuvillette": {
+   "special": "His held Charged Attack (Equitable Judgment) can be shortened; sC is an ordinary Charged Attack.",
+   "howTo": "C · sC · shorter: C(ticks=5)",
+   "watch": [
+    "After a shortened C, no Normal Attack, Charged Attack or walk next (use dash, jump, skill or burst)."
+   ],
+   "source": "neuvillette/charge.go:80, attack.go:40"
+  },
+  "nilou": {
+   "special": "Three dance steps after her skill; the 3rd step decides the result.",
+   "howTo": "E E E (Water Wheel) or E … N (Luminous Illusion)",
+   "watch": [
+    "Swapping out resets the steps."
+   ],
+   "source": "nilou/skill.go:159"
+  },
+  "odette": {
+   "special": "Skill again is Coda (with its own cooldown).",
+   "howTo": "E E",
+   "watch": [
+    "gcsim waits for Coda's cooldown."
+   ],
+   "source": "odette/odette.go:72"
+  },
+  "prune": {
+   "special": "Skill again is a recast.",
+   "howTo": "E E",
+   "watch": [
+    "Only if her first hit caused a Swirl."
+   ],
+   "source": "prune/skill.go:94"
+  },
+  "raidenshogun": {
+   "special": "Her burst turns her attacks into Musou Isshin.",
+   "howTo": "Q N… C",
+   "watch": [
+    "Swapping out ends the burst."
+   ],
+   "source": "raiden/burst.go"
+  },
+  "sandrone": {
+   "special": "Charged Attack fires beams, limited by her Decoding Power.",
+   "howTo": "C · beams: C(beams=2)",
+   "watch": [
+    "Too many beams for her Decoding stops the run.",
+    "No walk or jump during her skill: the run stops."
+   ],
+   "source": "sandrone/charge.go:77-93, sandrone.go:71"
+  },
+  "sayu": {
+   "special": "Short hold is its own skill version (one roll and the kick); a hold can also be any length.",
+   "howTo": "sE (short hold) · tE · hE(60) for a longer roll",
+   "watch": [
+    "hE alone is a 1-frame hold, not the short hold: use sE."
+   ],
+   "source": "sayu/skill.go:56"
+  },
+  "sethos": {
+   "special": "His burst turns Normal Attacks into Dusk Bolts.",
+   "howTo": "Q N…",
+   "watch": [
+    "No aim during his burst: the run stops."
+   ],
+   "source": "sethos/aimed.go:46"
+  },
+  "sigewinne": {
+   "special": "Skill has hold levels (1 = short hold); her burst can be shortened.",
+   "howTo": "tE · hE (short hold, tier 1) · hE(2) (tier 2) · Q(ticks=…)",
+   "watch": [
+    "After a shortened burst, only dash or jump next."
+   ],
+   "source": "sigewinne/skill.go:73, burst.go:48"
+  },
+  "skirk": {
+   "special": "Tap skill is Seven-Phase Flash: her attacks change and burst becomes Extinction. Hold skill absorbs Void Rifts without Flash.",
+   "howTo": "tE N… C… Q · hold: hE (any length up to hE(184))",
+   "watch": [
+    "No second skill during Seven-Phase Flash: the run stops.",
+    "Swapping out ends Flash."
+   ],
+   "source": "skirk/skirk.go:151, burst.go:45"
+  },
+  "tartaglia": {
+   "special": "Skill switches to melee stance; burst changes with the stance; skill again leaves it.",
+   "howTo": "E N… E",
+   "watch": [
+    "No aim in melee stance and no Charged Attack in ranged stance: the run stops.",
+    "A long melee stance means a long skill cooldown."
+   ],
+   "source": "tartaglia/aimed.go:36, charge.go:34"
+  },
+  "varesa": {
+   "special": "Nightsoul: Fiery Passion moves; Normal Attack after her skill is the Follow-Up Strike; a plunge gives Apex Drive, then burst is Volcanic Kablam.",
+   "howTo": "E N … C P Q",
+   "watch": [
+    "High plunge only after a Charged Attack or with Xianyun.",
+    "Volcanic Kablam needs 30 energy (gcsim waits)."
+   ],
+   "source": "varesa/plunge.go, burst.go:44"
+  },
+  "varka": {
+   "special": "His skill state changes his attacks; his special skill and Azure Devour need certain teammates.",
+   "howTo": "E N… C",
+   "watch": [
+    "Needs a Pyro, Hydro, Electro or Cryo teammate.",
+    "Swapping out ends his state."
+   ],
+   "source": "varka/skill.go:127"
+  },
+  "vodyanitsa": {
+   "special": "Her burst is stronger during her skill.",
+   "howTo": "E … Q",
+   "watch": [],
+   "source": "vodyanitsa/burst.go:31"
+  },
+  "wanderer": {
+   "special": "Skill is Windfavored: everything changes; skill again ends it.",
+   "howTo": "E N… E",
+   "watch": [
+    "Press E to end it before swapping, or gcsim waits."
+   ],
+   "source": "wanderer/skill.go:31"
+  },
+  "xianyun": {
+   "special": "Skill gives up to 3 leaps, then plunge is Driftcloud Wave; her burst lets anyone jump and plunge.",
+   "howTo": "E P, E E P · after her burst: J P",
+   "watch": [
+    "No Normal or Charged Attack during her skill: gcsim waits.",
+    "Plunge only during her skill or while airborne."
+   ],
+   "source": "xianyun/xianyun.go:58, plunge.go:91"
+  },
+  "xilonen": {
+   "special": "Skill is Nightsoul skating: Normal Attacks become Blade Roller.",
+   "howTo": "E N… E",
+   "watch": [
+    "No Charged Attack or low plunge in Nightsoul: the run stops.",
+    "Pressing skill again within 1 s waits."
+   ],
+   "source": "xilonen/xilonen.go:87-99, plunge.go:78"
+  },
+  "yaoyao": {
+   "special": "During her burst, dashing or jumping throws extra radishes.",
+   "howTo": "Q D… or Q J…",
+   "watch": [],
+   "source": "yaoyao/asc.go:13"
+  },
+  "yumemizukimizuki": {
+   "special": "Dreamdrifter: only dash, walk, burst, or skill (to cancel) are allowed.",
+   "howTo": "E D… or E W…, E to cancel",
+   "watch": [
+    "Normal or Charged Attack, jump or aim during Dreamdrifter make gcsim wait until it ends."
+   ],
+   "source": "mizuki/mizuki.go:86"
+  },
+  "yunjin": {
+   "special": "Skill has hold levels, and a perfect counter.",
+   "howTo": "tE · hE (level 1) · hE(2) (level 2) · E(perfect=1)",
+   "watch": [],
+   "source": "yunjin/skill.go"
+  },
+  "zibai": {
+   "special": "Skill is Lunar Phase Shift: Radiance builds; skill again at 70 is Spirit Steed's Stride.",
+   "howTo": "E N… E",
+   "watch": [
+    "gcsim waits until 70 Radiance; the wait shows as \"stamina\" in Time lost.",
+    "Normal Attacks shorten the wait (+5 each)."
+   ],
+   "source": "zibai/zibai.go:73, skill.go:200-242"
+  }
+ }
+}

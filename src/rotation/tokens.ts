@@ -3,6 +3,8 @@
 //   E = skill
 //   Neuvillette: C = charge        (character-specific; wins over the general entry)
 // Codes are letters only, because a number after a code means "repeat" (N5 = attack:5).
+// An action starting with "!" is a whole gcsim statement (for moves like Kinich's "Loop Shot until
+// the bar is full"); {key} in it becomes the character's gcsim name.
 
 export const DEFAULT_TOKEN_TABLE = `# Rotation shorthand. One per line:  code = gcsim action
 # Character-specific entries win over the general ones:  Name: code = action
@@ -24,10 +26,22 @@ j = jump
 J = jump
 w = walk
 W = walk
+Aim = aim
+# Special characters (see the Notation guide). A "!" action is a gcsim statement; {key} is the
+# character's gcsim name.
+Kinich: L = !while .{key}.nightsoul.state && .{key}.nightsoul.points < 20 { {key} attack; }
+Mualani: M = !while .{key}.nightsoul.state && .{key}.momentum < 3 { {key} walk; }
+Kirara: sE = skill[short_hold=1]
+Sayu: sE = skill[short_hold=1]
+Dahlia: sE = skill[short_hold=1]
+Traveler (Geo): sE = skill[short_hold=1]
+Neuvillette: sC = charge[short=1]
 `;
 
 /** Earlier built-in tables, so a saved copy that was never edited is upgraded automatically. */
-export const OLD_DEFAULT_TOKEN_TABLES = [DEFAULT_TOKEN_TABLE.replace('W = walk\n', '')];
+// The table before Aim and the special characters were added (it ended at "W = walk").
+const BEFORE_SPECIAL_CHARACTERS = DEFAULT_TOKEN_TABLE.slice(0, DEFAULT_TOKEN_TABLE.indexOf('Aim = aim'));
+export const OLD_DEFAULT_TOKEN_TABLES = [BEFORE_SPECIAL_CHARACTERS.replace('W = walk\n', ''), BEFORE_SPECIAL_CHARACTERS];
 
 export type TokenTable = {
   general: Map<string, string>;
@@ -49,7 +63,7 @@ export function parseTokenTable(text: string): TokenTable {
       return;
     }
     const [, character, code, action] = match;
-    if (/[;,\s]/.test(action.trim())) {
+    if (!action.trim().startsWith('!') && /[;,\s]/.test(action.trim())) {
       table.errors.push({ line: i + 1, message: `Line ${i + 1}: the action "${action.trim()}" can't contain spaces, commas or semicolons.` });
       return;
     }

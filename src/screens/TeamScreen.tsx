@@ -175,6 +175,17 @@ function SlotEditor({
       </div>
 
       <Picker label="Character" value={slot.character} options={characterOptions} onChange={pickCharacter} allowClear />
+      {character?.gcsim_key && data.special.get(character.gcsim_key) && (
+        <div className="special-note">
+          <p className="small">
+            <strong>⚡ Special mechanics:</strong> {data.special.get(character.gcsim_key)!.special}
+          </p>
+          <p className="small">
+            <strong>How to write it:</strong> <code>{data.special.get(character.gcsim_key)!.howTo}</code>. Details and things to watch
+            out for are in the Rotation section below.
+          </p>
+        </div>
+      )}
       {character?.gcsim_patch && (
         <p className="warn small">
           Experimental: gcsim doesn't include {character.name} yet, so this app adds them from an unfinished gcsim pull request. Results

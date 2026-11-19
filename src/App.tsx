@@ -79,6 +79,7 @@ export default function App() {
         problems: [`Couldn't build the config: ${error instanceof Error ? error.message : String(error)}. Check the Setup screen.`],
         notes: [],
         translation: { turns: [], ok: false, counters: { loop: false, cycles: [] } },
+        checks: [],
       };
     }
   }, [data, team, rotation, parsedTable, settings]);
@@ -386,6 +387,15 @@ export default function App() {
               members={data ? teamMembers(team, data) : []}
               built={built}
               onGoToRun={() => setScreen('Run')}
+              specials={
+                data
+                  ? team.flatMap((s) => {
+                      const key = s.character ? data.character.get(s.character)?.gcsim_key : undefined;
+                      const special = key ? data.special.get(key) : undefined;
+                      return special ? [{ name: s.character!, special }] : [];
+                    })
+                  : []
+              }
               saveBar={
                 <RotationSaveBar
                   {...loadedState}

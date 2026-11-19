@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { BuildResult } from '../config/build';
+import type { Special } from '../data/gameData';
+import type { Check } from '../rotation/checks';
 import type { RotationText, TeamMember, Turn } from '../rotation/notation';
 import { DEFAULT_TOKEN_TABLE } from '../rotation/tokens';
 import { Confirm } from './SavedTeams';
@@ -16,6 +18,8 @@ type Props = {
   members: TeamMember[];
   built?: BuildResult;
   onGoToRun: () => void;
+  /** Team members with special rotation mechanics (data/special_mechanics.json). */
+  specials?: { name: string; special: Special }[];
   /** Saved-rotation controls shown at the top of the Rotation section. */
   saveBar?: ReactNode;
 };
@@ -95,10 +99,12 @@ export default function RotationScreen(props: Props) {
               placeholder={EXAMPLES[section]}
               aria-label={section === 'opener' ? 'Opener' : 'Loop'}
             />
-            <TranslationPreview turns={turns.filter((t) => t.section === section)} />
+            <TranslationPreview turns={turns.filter((t) => t.section === section)} checks={(built?.checks ?? []).filter((c) => c.section === section)} />
           </div>
         ))}
       </section>
+
+      {props.specials && props.specials.length > 0 && <SpecialCharacters specials={props.specials} checks={built?.checks ?? []} />}
 
       <section className="card">
         <h2>Shorthand table</h2>
@@ -167,6 +173,13 @@ function NotationHelp() {
           <tr><td><code>Q@1/2</code></td><td>only in loops 1, 3, 5… (<code>@2/2</code> = loops 2, 4, 6…; <code>@1/3</code> = 1, 4, 7…)</td></tr>
           <tr><td><code>Q@2+</code></td><td>from loop 2 onwards</td></tr>
           <tr><td><code>Q?|E</code></td><td>burst if ready, <strong>otherwise</strong> skill (combine: <code>Q?@1/2|E</code>)</td></tr>
+          <tr><td><code>Aim</code></td><td>aimed shot (bows; Chasca, Lyney, Sethos…)</td></tr>
+          <tr><td><code>hE(60)</code> <code>hE(2)</code></td><td>options: hold length in frames (Nahida, Navia, Skirk, Jean…) or hold level 2 (Bennett, Yun Jin, Sigewinne)</td></tr>
+          <tr><td><code>C(beams=2)</code> <code>E(recast=1)</code></td><td>any gcsim option by name (Sandrone's beams, Fischl's or Mavuika's recast, Neuvillette's <code>C(ticks=5)</code>…)</td></tr>
+          <tr><td><code>sE</code></td><td>short hold skill: Kirara, Sayu, Dahlia, Traveler (Geo)</td></tr>
+          <tr><td><code>sC</code></td><td>Neuvillette's ordinary (short) Charged Attack</td></tr>
+          <tr><td><code>L</code></td><td>Kinich: Loop Shot until his bar is full (<code>Kinich E L E</code>)</td></tr>
+          <tr><td><code>M</code></td><td>Mualani: keep surfing until 3 Wave Momentum (<code>Mualani E M N</code>)</td></tr>
           <tr><td><code>! …</code></td><td>a line in gcsim's own language, used exactly as written</td></tr>
         </tbody>
       </table>
@@ -179,7 +192,46 @@ function NotationHelp() {
   );
 }
 
-function TranslationPreview({ turns }: { turns: Turn[] }) {
+const LEVEL_LABEL: Record<Check['level'], string> = { stop: 'Stops the run', wait: 'gcsim waits', tip: 'Tip' };
+
+/** Special characters in this team: what's special, how to write it, what to watch out for. */
+function SpecialCharacters({ specials, checks }: { specials: { name: string; special: Special }[]; checks: Check[] }) {
+  return (
+    <section className="card special-card">
+      <h2>Special characters in this team</h2>
+      <p className="muted small">
+        These characters have moves that work differently. The rotation is checked as you type: warnings appear under the
+        turn they belong to.
+      </p>
+      <ul className="special-list">
+        {specials.map(({ name, special }) => {
+          const mine = checks.filter((c) => c.character === name);
+          return (
+            <li key={name}>
+              <div className="run-name">
+                {name}
+                {mine.length > 0 && <span className={`badge check-${mine.some((c) => c.level === 'stop') ? 'stop' : mine.some((c) => c.level === 'wait') ? 'wait' : 'tip'}`}> {mine.length} in this rotation</span>}
+              </div>
+              <p className="small">{special.special}</p>
+              <p className="small">
+                <strong>How to write it:</strong> <code>{special.howTo}</code>
+              </p>
+              {special.watch.length > 0 && (
+                <ul className="small watch-list">
+                  {special.watch.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function TranslationPreview({ turns, checks }: { turns: Turn[]; checks: Check[] }) {
   if (turns.length === 0) return null;
   return (
     <ol className="turns" aria-label="Translation preview">
@@ -207,6 +259,13 @@ function TranslationPreview({ turns }: { turns: Turn[] }) {
           ))}
           {turn.error && <p className="warn small">{turn.error}</p>}
           {turn.note && <p className="muted small">{turn.note}</p>}
+          {checks
+            .filter((c) => c.index === turn.index)
+            .map((c) => (
+              <p key={c.message} className={`small check check-${c.level}`}>
+                <strong>{LEVEL_LABEL[c.level]}:</strong> {c.message}
+              </p>
+            ))}
         </li>
       ))}
     </ol>

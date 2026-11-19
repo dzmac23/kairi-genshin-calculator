@@ -5,6 +5,7 @@
 // Character ascension values exclude the 5% CRIT Rate and 50% CRIT DMG every character has.
 
 import { useEffect, useState } from 'react';
+import type { ChargeRule } from '../rotation/checks';
 
 /** A breakpoint level in the game data ("80+" = 80 after ascending). Any level is allowed on a team: see team/level.ts. */
 export type LevelKey = '1' | '20' | '20+' | '40' | '40+' | '50' | '50+' | '60' | '60+' | '70' | '70+' | '80' | '80+' | '90' | '95' | '100';
@@ -56,6 +57,9 @@ export type Enemy = {
   freezeResist: number;
 };
 
+/** Special rotation mechanics of a character (data/special_mechanics.json). */
+export type Special = { special: string; howTo: string; watch: string[]; source: string };
+
 export type GameData = {
   characters: Character[];
   weapons: Weapon[];
@@ -65,6 +69,10 @@ export type GameData = {
   weapon: Map<string, Weapon>;
   set: Map<string, ArtifactSet>;
   enemy: Map<string, Enemy>;
+  /** By gcsim key: combo length and Charged Attack rule (data/gcsim_rules.json). */
+  rules: Map<string, ChargeRule>;
+  /** By gcsim key: special mechanics notes. */
+  special: Map<string, Special>;
 };
 
 let loading: Promise<GameData> | undefined;
@@ -75,7 +83,9 @@ export function loadGameData(): Promise<GameData> {
     import('../../data/weapons.json'),
     import('../../data/artifact_sets.json'),
     import('../../data/enemies.json'),
-  ]).then(([c, w, s, e]) => {
+    import('../../data/gcsim_rules.json'),
+    import('../../data/special_mechanics.json'),
+  ]).then(([c, w, s, e, r, sp]) => {
     const characters = (c.default as Character[]).slice().sort((a, b) => a.name.localeCompare(b.name));
     const weapons = (w.default as Weapon[]).slice().sort((a, b) => a.name.localeCompare(b.name));
     // Low-rarity sets have no gcsim key and cannot be simulated, so they are left out.
@@ -90,6 +100,8 @@ export function loadGameData(): Promise<GameData> {
       weapon: new Map(weapons.map((x) => [x.name, x])),
       set: new Map(sets.map((x) => [x.name, x])),
       enemy: new Map(enemies.map((x) => [x.key, x])),
+      rules: new Map(Object.entries(r.default.characters as Record<string, ChargeRule>)),
+      special: new Map(Object.entries(sp.default.characters as Record<string, Special>)),
     };
   });
   loading.catch(() => (loading = undefined));
