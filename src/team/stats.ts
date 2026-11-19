@@ -5,6 +5,7 @@
 // team buffs: gcsim applies all of those itself during the simulation.
 
 import type { Character, Weapon } from '../data/gameData';
+import { interpolateStats } from './level';
 import { artifactsFromTotals, type ArtifactStatKey, type Slot } from './model';
 
 export type StatTotals = {
@@ -54,8 +55,9 @@ export function artifactValue(slot: Slot, key: ArtifactStatKey): number {
 }
 
 export function computeStats(slot: Slot, character: Character, weapon: Weapon | undefined): StatTotals {
-  const c = character.stats.find((s) => s.level === slot.level) ?? character.stats[character.stats.length - 1];
-  const w = weapon?.stats.find((s) => s.level === slot.weaponLevel);
+  // Levels between the breakpoints in the game data (like 81) are estimated: see team/level.ts.
+  const c = (interpolateStats(character.stats, slot.level, ['base_hp', 'base_atk', 'base_def']) ?? character.stats[character.stats.length - 1]) as Character['stats'][number];
+  const w = weapon ? (interpolateStats(weapon.stats, slot.weaponLevel, ['base_atk', 'substat_value']) as Weapon['stats'][number] | undefined) : undefined;
 
   const bonus = { 'hp%': 0, 'atk%': 0, 'def%': 0, em: 0, cr: 0.05, cd: 0.5, er: 1, phys: 0, heal: 0, elem: 0 };
   const ascKind = statKind(character.ascension_stat, character.element);

@@ -95,7 +95,7 @@ describe('same team, tweaked', () => {
     );
     expect(c.sameTeam).toBe(true);
     expect(c.characters.map((x) => x.name)).toEqual(['Neuvillette', 'Kaedehara Kazuha', 'Furina', 'Xilonen']);
-    expect(c.changes).toEqual(['Furina: W R1 lv 90 → R5 lv 90', 'Furina: CRIT Rate 0% → 70%', 'Loop: "Furina E Q" → "Furina E Q?"']);
+    expect(c.changes).toEqual(['Furina: W R1 lv 90/90 → R5 lv 90/90', 'Furina: CRIT Rate 0% → 70%', 'Loop: "Furina E Q" → "Furina E Q?"']);
   });
 
   it('compares pasted configs line by line, ignoring the iteration count', () => {

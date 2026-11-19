@@ -8,6 +8,7 @@
 
 import type { RunRecord } from '../history/model';
 import { characterName, summarize, type GcsimResult, type ResultsView } from '../results/summarize';
+import { formatLevel } from '../team/level';
 import { ARTIFACT_STATS, TOTAL_STATS, type Slot } from '../team/model';
 
 /** Scenario A compared with Scenario B. */
@@ -148,12 +149,12 @@ export function fairnessCheck(a: RunRecord, b: RunRecord, enemyName: (key: strin
 
 function slotChanges(n: string, a: Slot, b: Slot): string[] {
   const out: string[] = [];
-  if (a.level !== b.level) out.push(`${n}: level ${a.level} → ${b.level}`);
+  if (a.level !== b.level) out.push(`${n}: level ${formatLevel(a.level)} → ${formatLevel(b.level)}`);
   if (a.constellation !== b.constellation) out.push(`${n}: C${a.constellation} → C${b.constellation}`);
   if (a.talents.join('/') !== b.talents.join('/')) out.push(`${n}: talents ${a.talents.join('/')} → ${b.talents.join('/')}`);
   if (a.weapon !== b.weapon) out.push(`${n}: weapon ${a.weapon ?? 'none'} → ${b.weapon ?? 'none'}`);
   else if (a.refinement !== b.refinement || a.weaponLevel !== b.weaponLevel) {
-    out.push(`${n}: ${a.weapon} R${a.refinement} lv ${a.weaponLevel} → R${b.refinement} lv ${b.weaponLevel}`);
+    out.push(`${n}: ${a.weapon} R${a.refinement} lv ${formatLevel(a.weaponLevel)} → R${b.refinement} lv ${formatLevel(b.weaponLevel)}`);
   }
   const sets = (s: Slot) =>
     s.sets.mode === '4pc' ? `4pc ${s.sets.set ?? '?'}` : s.sets.mode === '2+2' ? `2pc ${s.sets.first ?? '?'} + 2pc ${s.sets.second ?? '?'}` : 'no set';

@@ -116,7 +116,7 @@ describe('helpers', () => {
 
 describe('repairing saved or imported team data', () => {
   it('keeps good values and replaces malformed ones with defaults', () => {
-    const slot = cleanSlot({ character: 'Furina', talents: 9, constellation: 9, level: '85', refinement: '5', sets: { mode: 'weird' }, artifacts: { cr: 40, cd: 'lots', bogus: 3 } });
+    const slot = cleanSlot({ character: 'Furina', talents: 9, constellation: 9, level: '85+', refinement: '5', sets: { mode: 'weird' }, artifacts: { cr: 40, cd: 'lots', bogus: 3 } });
     expect(slot).toEqual({ ...emptySlot(), character: 'Furina', constellation: 6, artifacts: { cr: 40 } });
   });
   it('accepts a whole team only with exactly four slots', () => {

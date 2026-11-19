@@ -12,6 +12,7 @@ import { DEFAULT_TOKEN_TABLE, parseTokenTable } from '../rotation/tokens';
 import { measureTiming } from '../rotation/timing';
 import { placeholderTeam } from '../team/placeholderTeam.testutil';
 import { getBaseline, snapshotConfig, solveArtifacts, statsFromSnapshot } from '../team/baseline';
+import { interpolateStats } from '../team/level';
 import { type Slot } from '../team/model';
 
 const engineDir = resolve('public/gcsim');
@@ -77,6 +78,21 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     for (let i = 0; i < 100; i++) aggregate(simulate() as Uint8Array);
     const dps = JSON.parse((flush() as { result: string }).result).statistics.dps.mean;
     expect(Math.abs(dps - 35126) / 35126).toBeLessThan(0.1);
+  });
+
+  it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {
+    const furina = placeholderTeam(data)[2];
+    const hpAt = (level: string) => {
+      const out = JSON.parse(sample(snapshotConfig({ ...furina, level }, data, false), '1'));
+      expect(out.error).toBeUndefined();
+      return out.character_details[0].snapshot[3] as number;
+    };
+    const [h80, h81, h90] = [hpAt('80+'), hpAt('81'), hpAt('90')];
+    expect(h81).toBeGreaterThan(h80);
+    expect(h81).toBeLessThan(h90);
+    // The app's own estimate for the Team screen preview is within 0.5% of gcsim's exact curve.
+    const est = interpolateStats(data.character.get('Furina')!.stats, '81', ['base_hp'])!.base_hp!;
+    expect(Math.abs(est - h81) / h81).toBeLessThan(0.005);
   });
 
   it('gives the same stats from character totals as from the artifact stats they came from', async () => {

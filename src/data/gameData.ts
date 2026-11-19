@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 
+/** A breakpoint level in the game data ("80+" = 80 after ascending). Any level is allowed on a team: see team/level.ts. */
 export type LevelKey = '1' | '20' | '20+' | '40' | '40+' | '50' | '50+' | '60' | '60+' | '70' | '70+' | '80' | '80+' | '90' | '95' | '100';
 
 export type Character = {

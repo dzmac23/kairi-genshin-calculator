@@ -1,7 +1,8 @@
-import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
-import { useGameData, type GameData, type LevelKey } from '../data/gameData';
+import { useGameData, type GameData } from '../data/gameData';
+import { canChooseAscension, levelCap, levelKey, MAX_ASCENSION, parseLevel } from '../team/level';
 import { checkTeam, teamToGcsim } from '../team/gcsim';
 import { canSnapshot, totalsFromArtifacts } from '../team/baseline';
 import {
@@ -9,10 +10,10 @@ import {
   artifactsFromTotals,
   baselineKey,
   hasCurrentBaseline,
-  CHARACTER_LEVELS,
   emptySlot,
+  MAX_CHARACTER_LEVEL,
+  MAX_WEAPON_LEVEL,
   TOTAL_STATS,
-  WEAPON_LEVELS,
   type Slot,
   type Team,
   type TotalKey,
@@ -181,7 +182,7 @@ function SlotEditor({
       {character && (
         <>
           <div className="row">
-            <LevelSelect label="Level" value={slot.level} levels={CHARACTER_LEVELS} onChange={(level) => set({ level })} />
+            <LevelInput label="Level" value={slot.level} max={MAX_CHARACTER_LEVEL} onChange={(level) => set({ level })} />
             <Segmented label="Constellation" value={slot.constellation} values={[0, 1, 2, 3, 4, 5, 6]} prefix="C" onChange={(constellation) => set({ constellation })} />
           </div>
 
@@ -217,7 +218,7 @@ function SlotEditor({
           <Picker label={`Weapon (${character.weapon_type.toLowerCase()})`} value={slot.weapon} options={weaponOptions} onChange={(w) => set({ weapon: w })} />
           {weapon && (
             <div className="row">
-              <LevelSelect label="Weapon level" value={slot.weaponLevel} levels={WEAPON_LEVELS} onChange={(weaponLevel) => set({ weaponLevel })} />
+              <LevelInput label="Weapon level" value={slot.weaponLevel} max={MAX_WEAPON_LEVEL} onChange={(weaponLevel) => set({ weaponLevel })} />
               <Segmented label="Refinement" value={slot.refinement} values={[1, 2, 3, 4, 5]} prefix="R" onChange={(refinement) => set({ refinement })} />
             </div>
           )}
@@ -480,17 +481,74 @@ function TeamSummary({
   );
 }
 
-function LevelSelect({ label, value, levels, onChange }: { label: string; value: LevelKey; levels: LevelKey[]; onChange: (v: LevelKey) => void }) {
+/**
+ * A level box with the ascension shown as six stars. The level sets the stars; at 20, 40, 50, 60,
+ * 70 and 80 the next star can be tapped to say the character (or weapon) has ascended there,
+ * e.g. 80/90 instead of 80/80.
+ */
+function LevelInput({ label, value, max, onChange }: { label: string; value: string; max: number; onChange: (v: string) => void }) {
+  const current = parseLevel(value, max) ?? { level: 90, ascension: 6 };
+  const [text, setText] = useState(String(current.level));
+  useEffect(() => {
+    // Follow outside changes (loading a team), but not while the box already says this level.
+    if (Number(text) !== current.level) setText(String(current.level));
+  }, [current.level]);
+  const typed = Number(text);
+  const bad = text.trim() !== '' && !(Number.isInteger(typed) && typed >= 1 && typed <= max);
+  const choosable = canChooseAscension(current.level);
+  const ascended = choosable && current.ascension > parseLevel(String(current.level))!.ascension;
+  const optionalStar = choosable ? parseLevel(String(current.level))!.ascension : -1; // index of the star that can be tapped
   return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value as LevelKey)}>
-        {levels.map((l) => (
-          <option key={l} value={l}>
-            {l.endsWith('+') ? `${l.slice(0, -1)} (ascended)` : l}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="field level-field">
+      <label className="field-label" htmlFor={`level-${label}`}>
+        {label}
+      </label>
+      <div className="level-row">
+        <input
+          id={`level-${label}`}
+          inputMode="numeric"
+          value={text}
+          onChange={(e) => {
+            const t = e.target.value.replace(/[^0-9]/g, '').slice(0, 3);
+            setText(t);
+            const n = Number(t);
+            // A newly typed level starts before ascending; tap the star to change that.
+            if (Number.isInteger(n) && n >= 1 && n <= max) onChange(levelKey(n, n === current.level && ascended));
+          }}
+          aria-label={label}
+        />
+        <span className="muted">/ {levelCap(current)}</span>
+      </div>
+      <div className="stars" role="group" aria-label={`${label}: ascension ${current.ascension} of ${MAX_ASCENSION}`}>
+        {Array.from({ length: MAX_ASCENSION }, (_, i) => {
+          const lit = i < current.ascension;
+          const tappable = i === optionalStar;
+          return (
+            <button
+              key={i}
+              type="button"
+              className={`star${lit ? ' lit' : ''}${tappable ? ' tappable' : ''}`}
+              disabled={!tappable}
+              aria-pressed={tappable ? ascended : undefined}
+              aria-label={tappable ? (ascended ? `Ascended at ${current.level} (tap to undo)` : `Tap if ascended at ${current.level}`) : `Ascension ${i + 1}${lit ? ' done' : ''}`}
+              onClick={() => onChange(levelKey(current.level, !ascended))}
+            >
+              {lit ? '★' : '☆'}
+            </button>
+          );
+        })}
+      </div>
+      {bad ? (
+        <p className="warn small">Type a level from 1 to {max}.</p>
+      ) : (
+        choosable && (
+          <p className="muted small">
+            {ascended
+              ? `Ascended at ${current.level}: level cap ${levelCap(current)}.`
+              : `Tap the ${['first', 'second', 'third', 'fourth', 'fifth', 'sixth'][optionalStar]} star if it has ascended at ${current.level} (${current.level}/${levelCap({ level: current.level, ascension: current.ascension + 1 })}).`}
+          </p>
+        )
+      )}
+    </div>
   );
 }
