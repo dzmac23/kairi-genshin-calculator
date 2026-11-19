@@ -437,3 +437,9 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .star.lit { color: var(--gold); }
 .star.tappable { cursor: pointer; outline: 1px dashed #f2c45e88; outline-offset: -2px; }
 .level-field p { margin: 0.25rem 0 0; }
+
+/* iPhone and iPad: Safari zooms in when a text box's text is smaller than 16px, and stays zoomed.
+   -webkit-touch-callout is only supported by Safari on iOS/iPadOS, so other devices keep their sizes. */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea, textarea.config, textarea.rotation-input { font-size: max(16px, 1em); }
+}

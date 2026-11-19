@@ -36,11 +36,20 @@ export async function shareFile(name: string, text: string): Promise<boolean> {
   }
 }
 
+/**
+ * True in the app installed to an iPhone or iPad home screen, where a normal download often just
+ * opens the file instead of saving it (navigator.standalone only exists on iOS/iPadOS).
+ */
+export function isIosHomeScreenApp(): boolean {
+  return typeof navigator !== 'undefined' && (navigator as { standalone?: boolean }).standalone === true;
+}
+
 /** Saves an export file (download) or opens the share sheet. Returns a short message for the screen. */
 export async function deliverFile(file: TransferFile, share: boolean): Promise<string> {
   const name = fileName(file);
   const text = JSON.stringify(file);
-  if (share) return (await shareFile(name, text)) ? 'Shared.' : '';
+  // On the iPhone/iPad home screen app, saving goes through the share sheet ("Save to Files").
+  if (share || (isIosHomeScreenApp() && canShareFiles())) return (await shareFile(name, text)) ? 'Shared.' : '';
   downloadFile(name, text);
   return `Saved ${name}.`;
 }

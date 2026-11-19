@@ -76,6 +76,19 @@ Once published, the app lives at `https://<your GitHub username>.github.io/kairi
 
 The first visit downloads about 8 MB (mostly the gcsim engine). When a new version is published, the app shows an **Update** button instead of reloading by itself.
 
+### Devices and browsers
+
+Works on phones, tablets, laptops and desktops: Windows, macOS, Android, iPhone and iPad.
+
+- **Browsers:** Chrome or Edge 107+, Safari 16+ (iPhone and iPad need **iOS/iPadOS 16 or newer**; every iOS browser uses Safari's engine), Firefox 114+.
+- **Layout:** tabs at the bottom on phones, at the top on tablets and computers. Checked on 12 screen sizes from 320 px phones to 2560 px monitors, portrait and landscape, with no sideways scrolling on any screen.
+- **iPhone and iPad:**
+  - text boxes use 16 px text, so Safari doesn't zoom in when you type;
+  - the notch and home bar are kept clear;
+  - in the home-screen app, **Export** opens the share sheet (choose *Save to Files*), because iOS can't save downloads there;
+  - install it to the home screen: Safari can clear the saved data of websites you haven't opened for a while, but not of home-screen apps. Keep a backup either way (Home → Export everything).
+- **Memory:** each copy of the engine uses about 40–90 MB. The app runs 3 to 8 copies depending on the device (4 on iPhones and iPads, which don't report their memory). Very old phones with 2 GB or less may struggle with 1,000-fight runs; 100 or 500 fights are lighter.
+
 ## How publishing works
 
 Two workflows in `.github/workflows/` run on GitHub's servers:
