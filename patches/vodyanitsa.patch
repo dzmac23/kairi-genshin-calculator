@@ -1,0 +1,1682 @@
+Vodyanitsa for gcsim, from an unmerged gcsim pull request, plus one change so other teams are
+unaffected.
+
+Source: https://github.com/genshinsim/gcsim/pull/3274 by Charlie-Zheng (a gcsim maintainer), frames
+        counted by caramielle, at commit 5fb8aa6 (2026-11-18), based on gcsim v2.50.0. Applied after
+        linnea.patch and nefer.patch (patches apply in name order), without conflicts.
+Not reviewed or accepted yet: gcsim's reviewer has requested changes (so far about code comments:
+"stellar, not lunar", a "seal" comment from Yanfei's code). Results are experimental.
+
+Left out: the website files (ui/).
+
+Changes added by this project:
+  - Stellar Swirl timing: the pull request works out Stellar Swirl damage 3 frames after the
+    reaction instead of at it, for every team (Kazuha, Diona, Heizou, Ifa, Mizuki, Viridescent and
+    other sets use Stellar Swirl). Here that only happens when Vodyanitsa is in the team (she sets
+    a flag); every other team keeps gcsim v2.50.0's timing (checked: identical results without her).
+  - Marked "incomplete" in gcsim (as linnea.patch and nefer.patch do), so every result with her
+    shows gcsim's "may not match the game exactly yet" warning.
+
+This file is applied by scripts/build-gcsim.sh. When gcsim includes Vodyanitsa itself, the build
+skips it and says so; then delete this file.
+
+diff --git a/internal/characters/vodyanitsa/asc.go b/internal/characters/vodyanitsa/asc.go
+new file mode 100644
+index 000000000..7b866c48c
+--- /dev/null
++++ b/internal/characters/vodyanitsa/asc.go
+@@ -0,0 +1,233 @@
++package vodyanitsa
++
++import (
++	"math"
++
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/enemy"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++	"github.com/genshinsim/gcsim/pkg/reactable"
++)
++
++const (
++	a1Key = "vodyanitsa-a1"
++	a4Key = "vodyanitsa-a4"
++)
++
++// When the Elemental Skill Rechitativ: Sonorous Dawn is used, any Stellar Vortex on the field will
++// turn into a Wandering Vortex instead. While the Song of Ages Past effect is active, nearby party
++// members' Stellar Swirl reactions will generate Wandering Vortex instead.
++// Generating or detonating a Wandering Vortex will also reduce nearby opponents' Anemo RES by 35%
++// for 6s.
++// Additionally, nearby party members who enter the Radiance: Stellar Swirl state while Song of Ages
++// Past is in effect will have the Radiance: Stellar Swirl state extended by 4s.
++func (c *char) a1Init() {
++	if c.Base.Ascension < 1 {
++		return
++	}
++	c.nearbyWanderingVortexExp = -1
++
++	c.Core.Events.Subscribe(event.OnStellarVortex, func(args ...any) {
++		if !c.StatusIsActive(skillKey) {
++			return
++		}
++		c.nearbyWanderingVortexExp = c.Core.F + math.MaxUint16
++		c.a1ApplyShred()
++	}, a1Key)
++
++	c.Core.Events.Subscribe(event.OnStellarVortexDetonate, func(args ...any) {
++		if !c.StatusIsActive(skillKey) {
++			return
++		}
++		c.nearbyWanderingVortexExp = c.Core.F + 5*60
++		c.a1ApplyShred()
++	}, "vodyanitsa-ssw")
++}
++
++func (c *char) recentWandering() bool {
++	return c.Core.F < c.nearbyWanderingVortexExp
++}
++
++func (c *char) a1ApplyShred() {
++	ap := combat.NewCircleHitOnTarget(c.Core.Combat.Player(), nil, 5)
++	for _, e := range c.Core.Combat.EnemiesWithinArea(ap, nil) {
++		e, ok := e.(*enemy.Enemy)
++		if !ok {
++			continue
++		}
++		e.AddResistMod(info.ResistMod{
++			Base:  modifier.NewBaseWithHitlag(a1Key, 6*60),
++			Ele:   attributes.Anemo,
++			Value: -0.35,
++		})
++	}
++}
++
++func (c *char) a1OnSkill(src int) {
++	if c.Base.Ascension < 1 {
++		return
++	}
++
++	for _, g := range c.Core.Combat.Gadgets() {
++		if g != nil && g.GadgetTyp() == info.GadgetTypStellarVortex {
++			c.a1ApplyShred()
++			break
++		}
++	}
++
++	c.Core.Flags.Custom[reactable.RadianceSwirlBonusDurKey] = 4 * 60
++	c.Core.Tasks.Add(func() {
++		if c.skillSrc != src {
++			return
++		}
++		// assumes no one else uses this flag
++		c.Core.Flags.Custom[reactable.RadianceSwirlBonusDurKey] = 0
++	}, skillDur+c.c2SkillDurBonus())
++}
++
++// When the Elemental Skill Rechitativ: Sonorous Dawn is used, Vodyanitsa will also gain 25 stacks
++// of Lead Vocal as well as 10 stacks of Chorus.
++// The two effects above last 30s each, and the stack count is refreshed when the Elemental Skill is
++// used.
++//
++// Lead Vocal:
++// When the party's currently active character deals Hydro DMG or Cryo DMG with a Normal Attack,
++// Charged Attack, Plunging Attack, Elemental Skill, or Elemental Burst, 1 stack of "Lead Vocal" is
++// consumed. This in turn increases the DMG dealt. However, if a Wandering Vortex is present on the
++// field or during the 5s following a Wandering Vortex explosion, this effect will only trigger when
++// the character deals Stellar Swirl reaction DMG.
++// Every 1000 Max HP Vodyanitsa has in excess of 40000 will increase the Stellar Swirl reaction DMG
++// from the above effect by 260, as well as increase Hydro DMG and Cryo DMG dealt by 140. Stellar
++// Swirl reaction DMG dealt can be increased by a maximum of 6500, while Hydro DMG and Cryo DMG can
++// be increased by a maximum of 3500 in this way.
++//
++// Chorus:
++// Triggered by off-field party members or other nearby party members (and not your currently active
++// party member). Effects are the same as those of "Lead Vocal."
++func (c *char) a4Init() {
++	if c.Base.Ascension < 4 {
++		return
++	}
++
++	activeContrib := false
++	offFieldContrib := false
++
++	// this is emitted up to 4 times per attack, but we should only consume 1 stack each of
++	// Lead Vocal and Chorus per "attack" so we only add damage in OnSpecialReactionAttack, but we
++	// will consume in OnEnemyHit. This relies on OnSpecialReactionAttack to be emitted before the
++	// corresponding OnEnemyHit, even in AoE.
++	c.Core.Events.Subscribe(event.OnSpecialReactionAttack, func(args ...any) {
++		ae := args[1].(*info.AttackEvent)
++		owner := ae.Info.ActorIndex
++		if !c.StatusIsActive(a4Key) {
++			return
++		}
++
++		var amt float64
++		if ae.Info.AttackTag != attacks.AttackTagReactionStellarSwirl {
++			return
++		}
++
++		if !c.a4StacksCheck(owner) {
++			return
++		}
++
++		amt = max(min((c.MaxHP()-40000)*260/1000, 6500), 0)
++		ae.Info.FlatDmg += amt
++
++		if owner == c.Core.Player.Active() {
++			activeContrib = true
++		} else {
++			offFieldContrib = true
++		}
++	}, a4Key)
++
++	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
++		ae := args[1].(*info.AttackEvent)
++
++		if !c.StatusIsActive(a4Key) {
++			return
++		}
++
++		var amt float64
++		switch ae.Info.AttackTag {
++		case attacks.AttackTagNormal,
++			attacks.AttackTagExtra, attacks.AttackTagPlunge,
++			attacks.AttackTagElementalArt,
++			attacks.AttackTagElementalArtHold,
++			attacks.AttackTagElementalBurst:
++			if ae.Info.Element != attributes.Cryo && ae.Info.Element != attributes.Hydro {
++				return
++			}
++			if c.recentWandering() {
++				return
++			}
++			if !c.a4StacksCheck(ae.Info.ActorIndex) {
++				return
++			}
++			amt = max(min((c.MaxHP()-40000)*140/1000, 3500), 0)
++		case attacks.AttackTagDirectStellarSwirl:
++			if !c.recentWandering() {
++				return
++			}
++			if !c.a4StacksCheck(ae.Info.ActorIndex) {
++				return
++			}
++			amt = max(min((c.MaxHP()-40000)*260/1000, 6500), 0)
++		case attacks.AttackTagReactionStellarSwirl:
++			if !c.recentWandering() {
++				return
++			}
++
++			// Based on testing, even if there are multiple off field contributors, only 1 stack
++			// of Chorus is consumed per reaction attack
++			c.a4StacksRemoveReaction(activeContrib, offFieldContrib)
++			activeContrib = false
++			offFieldContrib = false
++			return
++		default:
++			return
++		}
++
++		c.a4StacksRemove(ae.Info.ActorIndex)
++		ae.Info.FlatDmg += amt
++	}, a4Key)
++}
++
++func (c *char) a4StacksCheck(actor int) bool {
++	if actor == c.Core.Player.Active() {
++		return c.leadVocal > 0
++	}
++	return c.chorus > 0
++}
++
++func (c *char) a4StacksRemove(actor int) {
++	if actor == c.Core.Player.Active() {
++		c.leadVocal = max(c.leadVocal-1, 0)
++	} else {
++		c.chorus = max(c.chorus-1, 0)
++	}
++}
++
++func (c *char) a4StacksRemoveReaction(lead, chorus bool) {
++	if lead {
++		c.leadVocal = max(c.leadVocal-1, 0)
++	}
++	if chorus {
++		c.chorus = max(c.chorus-1, 0)
++	}
++}
++
++func (c *char) a4OnSkill() {
++	if c.Base.Ascension < 4 {
++		return
++	}
++
++	c.leadVocal = 25
++	c.chorus = 10
++	c.AddStatus(a4Key, 30*60, true)
++}
+diff --git a/internal/characters/vodyanitsa/attack.go b/internal/characters/vodyanitsa/attack.go
+new file mode 100644
+index 000000000..cfc3f1f35
+--- /dev/null
++++ b/internal/characters/vodyanitsa/attack.go
+@@ -0,0 +1,105 @@
++package vodyanitsa
++
++import (
++	"fmt"
++
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++var (
++	attackFrames   [][]int
++	attackHitmarks = []int{13, 13, 23, 34}
++	attackSize     = [][]float64{{0.7}, {0.7}, {0.7}, {2, 10}}
++)
++
++const normalHitNum = 4
++
++func init() {
++	attackFrames = make([][]int, normalHitNum)
++
++	// N1 -> x
++	attackFrames[0] = frames.InitNormalCancelSlice(attackHitmarks[0], 26)
++	attackFrames[0][action.ActionAttack] = 20
++	attackFrames[0][action.ActionWalk] = 24
++
++	// N2 -> x
++	attackFrames[1] = frames.InitNormalCancelSlice(attackHitmarks[1], 34)
++	attackFrames[1][action.ActionAttack] = 30
++	attackFrames[1][action.ActionCharge] = 28
++
++	// N3 -> x
++	attackFrames[2] = frames.InitNormalCancelSlice(attackHitmarks[2], 48)
++	attackFrames[2][action.ActionAttack] = 37
++	attackFrames[2][action.ActionCharge] = 36
++
++	// N4 -> x
++	attackFrames[3] = frames.InitNormalCancelSlice(attackHitmarks[3], 105)
++	attackFrames[3][action.ActionAttack] = 67
++	attackFrames[3][action.ActionWalk] = 99
++}
++
++func (c *char) Attack(p map[string]int) (action.Info, error) {
++	travel, ok := p["travel"]
++	if !ok {
++		travel = 10
++	}
++
++	windup := 0
++	if c.NormalCounter == 0 {
++		switch c.Core.Player.CurrentState() {
++		case action.ChargeAttackState, action.NormalAttackState, action.SkillState:
++			windup = 9
++		case action.BurstState:
++			windup = 2
++		}
++	}
++
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       fmt.Sprintf("Normal %v", c.NormalCounter),
++		AttackTag:  attacks.AttackTagNormal,
++		ICDTag:     attacks.ICDTagNormalAttack,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Hydro,
++		Durability: 25,
++		Mult:       attack[c.NormalCounter][c.TalentLvlAttack()],
++	}
++	ap := combat.NewCircleHit(
++		c.Core.Combat.Player(),
++		c.Core.Combat.PrimaryTarget(),
++		nil,
++		attackSize[c.NormalCounter][0],
++	)
++
++	if c.NormalCounter == 3 {
++		ap = combat.NewBoxHit(
++			c.Core.Combat.Player(),
++			c.Core.Combat.PrimaryTarget(),
++			nil,
++			attackSize[c.NormalCounter][0],
++			attackSize[c.NormalCounter][1],
++		)
++	}
++
++	c.Core.QueueAttack(
++		ai,
++		ap,
++		attackHitmarks[c.NormalCounter]+windup,
++		attackHitmarks[c.NormalCounter]+windup+travel,
++	)
++
++	defer c.AdvanceNormalIndex()
++
++	return action.Info{
++		Frames:          frames.NewAttackFuncWithOffset(c.Character, attackFrames, windup),
++		AnimationLength: attackFrames[c.NormalCounter][action.InvalidAction] + windup,
++		CanQueueAfter:   attackHitmarks[c.NormalCounter] + windup,
++		State:           action.NormalAttackState,
++	}, nil
++}
+diff --git a/internal/characters/vodyanitsa/burst.go b/internal/characters/vodyanitsa/burst.go
+new file mode 100644
+index 000000000..9fdb69cdc
+--- /dev/null
++++ b/internal/characters/vodyanitsa/burst.go
+@@ -0,0 +1,66 @@
++package vodyanitsa
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++var burstFrames []int
++
++const (
++	burstHitmark = 95
++)
++
++func init() {
++	burstFrames = frames.InitAbilSlice(102)
++	burstFrames[action.ActionAttack] = 101
++	burstFrames[action.ActionCharge] = 114 - burstWindup
++	burstFrames[action.ActionDash] = 101
++	burstFrames[action.ActionJump] = 101
++	burstFrames[action.ActionWalk] = 100
++	burstFrames[action.ActionSwap] = 99
++}
++
++// Leads a song of the Water Imps which lures its listeners to their doom. This deals AoE Hydro DMG
++// to the opponent.
++// When in the Song of Ages Past state, DMG dealt is further increased.
++func (c *char) Burst(p map[string]int) (action.Info, error) {
++	mult := burst[c.TalentLvlBurst()]
++	if c.StatusIsActive(skillKey) {
++		mult += burstBonus[c.TalentLvlBurst()]
++	}
++
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Sink With Thee",
++		AttackTag:  attacks.AttackTagElementalBurst,
++		ICDTag:     attacks.ICDTagNone,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Hydro,
++		Durability: 50,
++		Mult:       mult,
++		UseHP:      true,
++	}
++
++	c.Core.QueueAttack(
++		ai,
++		combat.NewCircleHitOnTarget(c.Core.Combat.Player(), nil, 5),
++		burstHitmark,
++		burstHitmark,
++	)
++
++	c.ConsumeEnergy(8)
++	c.SetCD(action.ActionBurst, 15*60)
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(burstFrames),
++		AnimationLength: burstFrames[action.InvalidAction],
++		CanQueueAfter:   burstFrames[action.ActionSwap], // earliest cancel
++		State:           action.BurstState,
++	}, nil
++}
+diff --git a/internal/characters/vodyanitsa/charge.go b/internal/characters/vodyanitsa/charge.go
+new file mode 100644
+index 000000000..505c55a18
+--- /dev/null
++++ b/internal/characters/vodyanitsa/charge.go
+@@ -0,0 +1,74 @@
++package vodyanitsa
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++)
++
++var chargeFrames []int
++
++const (
++	idleWindup    = 15
++	burstWindup   = idleWindup
++	chargeHitmark = 52 - idleWindup
++)
++
++func init() {
++	chargeFrames = frames.InitAbilSlice(75 - idleWindup)
++	chargeFrames[action.ActionCharge] = 78 - 32
++	chargeFrames[action.ActionSkill] = 56 - idleWindup
++	chargeFrames[action.ActionBurst] = 54 - idleWindup
++	chargeFrames[action.ActionDash] = chargeHitmark
++	chargeFrames[action.ActionJump] = chargeHitmark
++	chargeFrames[action.ActionWalk] = 68 - idleWindup
++	chargeFrames[action.ActionSwap] = 45
++}
++
++func (c *char) ChargeAttack(p map[string]int) (action.Info, error) {
++	travel, ok := p["travel"]
++	if !ok {
++		travel = 10
++	}
++
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Charge Attack",
++		AttackTag:  attacks.AttackTagExtra,
++		ICDTag:     attacks.ICDTagNone,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Hydro,
++		Durability: 25,
++		Mult:       charge[c.TalentLvlAttack()],
++	}
++
++	windup := 0
++	switch c.Core.Player.CurrentState() {
++	case action.Idle:
++		windup = idleWindup
++	case action.BurstState:
++		windup = burstWindup
++	case action.SkillState:
++		windup = 17
++	case action.ChargeAttackState:
++		windup = 32
++	}
++
++	c.Core.QueueAttack(
++		ai,
++		combat.NewCircleHitOnTarget(c.Core.Combat.PrimaryTarget(), nil, 2),
++		chargeHitmark+windup,
++		chargeHitmark+windup+travel,
++	)
++
++	return action.Info{
++		Frames:          func(next action.Action) int { return chargeFrames[next] + windup },
++		AnimationLength: chargeFrames[action.InvalidAction] + windup,
++		CanQueueAfter:   chargeHitmark + windup,
++		State:           action.ChargeAttackState,
++	}, nil
++}
+diff --git a/internal/characters/vodyanitsa/config.yml b/internal/characters/vodyanitsa/config.yml
+new file mode 100644
+index 000000000..38aae6da0
+--- /dev/null
++++ b/internal/characters/vodyanitsa/config.yml
+@@ -0,0 +1,86 @@
++use: pipeline
++kind: character
++name: vodyanitsa
++
++shortcuts:
++    - vody
++
++talents:
++    - attack:
++          - attack(1-Hit DMG)
++          - attack(2-Hit DMG)
++          - attack(3-Hit DMG)
++          - attack(4-Hit DMG)
++    - charge: attack(Charged Attack DMG)
++
++    - skill: skill(Skill DMG)
++    - skillDot: skill(Horn of Spring's Call DMG)
++    - skillHealFlat: skill(Song of Ages Past Healing) # {} + {} Max HP
++    - skillHealRatio: skill(Song of Ages Past Healing|1) # {} + {} Max HP
++    - skillShred: skill(Hydro/Cryo RES Reduction)
++
++    - burst: burst(Skill DMG)
++    - burstBonus: burst(Song of Ages Past DMG Bonus)
++
++docs:
++    fields:
++        .vodyanitsa.lead-vocal: Number of Lead Vocal stacks that Vodyanitsa has.
++        .vodyanitsa.chorus: Number of Chorus stacks that Vodyanitsa has.
++    frames:
++        - count: https://docs.google.com/spreadsheets/d/1l-rgH3cR58AQ55MbxoUK-yTPeN-QriJUDSho1E6rIPc/edit?usp=sharing
++          count_credit: caramielle.
++          video: https://youtu.be/n2-Kmdb2H8Y
++          video_credit: caramielle.
++        - count: https://docs.google.com/spreadsheets/d/1l-rgH3cR58AQ55MbxoUK-yTPeN-QriJUDSho1E6rIPc/edit?usp=sharing
++          count_credit: caramielle.
++          video: https://youtu.be/vGzXHpPYsoY
++          video_credit: caramielle.
++
++abilities:
++    - name: attack
++      params:
++          travel: Projectile travel time. Default 10 frames.
++      hitbox:
++          - name: N1
++            shape: Circle
++            center: PrimaryTarget
++            radius: 0.7
++
++          - name: N2
++            shape: Circle
++            center: PrimaryTarget
++            radius: 0.7
++
++          - name: N3
++            shape: Circle
++            center: PrimaryTarget
++            radius: 0.7
++
++          - name: N4
++            shape: Box
++            center: PrimaryTarget
++            box: [2, 10]
++    - name: charge
++      params:
++          travel: Projectile travel time. Default 10 frames.
++      hitbox:
++          - name: CA
++            shape: Circle
++            center: PrimaryTarget
++            radius: 2
++    - name: skill
++      hitbox:
++          - name: E-Initial
++            shape: Circle
++            center: Player
++            radius: 5.5
++          - name: E-DoT
++            shape: Circle
++            center: PrimaryTarget
++            radius: 3
++    - name: burst
++      hitbox:
++          - name: Q
++            shape: Circle
++            center: Player
++            radius: 5
+diff --git a/internal/characters/vodyanitsa/cons.go b/internal/characters/vodyanitsa/cons.go
+new file mode 100644
+index 000000000..1793638bd
+--- /dev/null
++++ b/internal/characters/vodyanitsa/cons.go
+@@ -0,0 +1,216 @@
++package vodyanitsa
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++)
++
++const (
++	c1Key = "vodyanitsa-c1"
++	c2Key = "vodyanitsa-c2"
++	c4Key = "vodyanitsa-c4"
++	c6Key = "vodyanitsa-c6"
++	c4Dur = 6 * 60
++)
++
++// Each time Vodyanitsa triggers the healing effect of Song of Ages Past, it also increases the ATK
++// of all nearby party members by 0.8% of her Max HP for 5s.
++func (c *char) c1Init() {
++	if c.Base.Cons < 1 {
++		return
++	}
++
++	c.c1Buff = make([]float64, attributes.EndStatType)
++}
++
++func (c *char) c1OnHeal() {
++	if c.Base.Cons < 1 {
++		return
++	}
++
++	// This buff is NOT an Extra buff
++	for _, char := range c.Core.Player.Chars() {
++		char.AddStatMod(character.StatMod{
++			Base:         modifier.NewBaseWithHitlag(c1Key, 5*60),
++			AffectedStat: attributes.ATK,
++			Amount: func() []float64 {
++				c.c1Buff[attributes.ATK] = c.MaxHP() * 0.008
++				return c.c1Buff
++			},
++		})
++	}
++}
++
++// When the Horn of Spring's Call from the Elemental Skill Rechitativ: Sonorous Dawn attacks the
++// opponent, Vodyanitsa gains the "Two Voices in Black and White" effect which increases the CRIT
++// DMG from Hydro DMG and Cryo DMG dealt by your own currently active party member by 50% for 5s.
++// If there is a Wandering Vortex present on the field or in the 5s after a Wandering Vortex
++// explodes, the effect changes to: increases the CRIT DMG from Stellar Swirl reaction DMG caused by
++// your own currently active party member by 60% for 5s.
++// Additionally, the Elemental Skill Rechitativ: Sonorous Dawn is enhanced as follows: the duration
++// of the Song of Ages Past effect is extended by 9s.
++func (c *char) c2Init() {
++	if c.Base.Cons < 2 {
++		return
++	}
++
++	c.c2Buff = make([]float64, attributes.EndStatType)
++
++	c.Core.Events.Subscribe(event.OnSpecialReactionAttack, func(args ...any) {
++		atk, ok := args[1].(*info.AttackEvent)
++		if !ok {
++			return
++		}
++
++		if c.c6c2CheckActive() && atk.Info.ActorIndex != c.Core.Player.Active() {
++			return
++		}
++
++		if atk.Info.AttackTag != attacks.AttackTagReactionStellarSwirl {
++			return
++		}
++
++		char := c.Core.Player.Chars()[atk.Info.ActorIndex]
++		if !char.StatusIsActive(c2Key) {
++			return
++		}
++
++		if !c.recentWandering() {
++			return
++		}
++
++		atk.Snapshot.Stats[attributes.CD] += 0.6
++	}, c2Key)
++}
++
++func (c *char) c2OnSkillAttack() {
++	if c.Base.Cons < 2 {
++		return
++	}
++
++	for _, char := range c.Core.Player.Chars() {
++		char.AddAttackMod(character.AttackMod{
++			Base: modifier.NewBase(c2Key, 5*60),
++			Amount: func(atk *info.AttackEvent, _ info.Target) []float64 {
++				if c.c6c2CheckActive() && atk.Info.ActorIndex != c.Core.Player.Active() {
++					return nil
++				}
++				if c.recentWandering() {
++					if atk.Info.AttackTag == attacks.AttackTagDirectStellarSwirl {
++						c.c2Buff[attributes.CD] = 0.6
++						return c.c2Buff
++					}
++				} else {
++					if atk.Info.Element == attributes.Cryo || atk.Info.Element == attributes.Hydro {
++						c.c2Buff[attributes.CD] = 0.5
++						return c.c2Buff
++					}
++				}
++				return nil
++			},
++		})
++	}
++}
++
++func (c *char) c2SkillDurBonus() int {
++	if c.Base.Cons < 2 {
++		return 0
++	}
++	return 9 * 60
++}
++
++// When Vodyanitsa triggers the healing effect of Song of Ages Past, an additional effect will be
++// triggered based on the healed character's HP.
++// · If the character's HP is below 40%: The healing is increased by 50%; and
++// · If the character's HP is 40% or above: Vodyanitsa's Max HP is increased by 20% for 6s. Max 3
++// stacks, and each stack's duration is counted independently.
++func (c *char) c4Init() {
++	if c.Base.Cons < 4 {
++		return
++	}
++	c.c4Buff = make([]float64, attributes.EndStatType)
++}
++
++func (c *char) c4BeforeHeal() float64 {
++	if c.Base.Cons < 4 {
++		return 0
++	}
++
++	if c.Core.Player.ActiveChar().CurrentHPRatio() < 0.4 {
++		return 0.5
++	}
++
++	c.c4Stacks++
++	c.QueueCharTask(func() { c.c4Stacks-- }, 6*60)
++
++	c.AddStatMod(character.StatMod{
++		Base:         modifier.NewBaseWithHitlag(c4Key, c4Dur),
++		AffectedStat: attributes.HPP,
++		Amount: func() []float64 {
++			c.c4Buff[attributes.HPP] = min(float64(c.c4Stacks), 3) * 0.2
++			return c.c4Buff
++		},
++	})
++
++	return 0
++}
++
++// The Constellation Echoes That Pierce the Snow is enhanced: "Two Voices in Black and White" now
++// applies to all nearby party members.
++// Additionally, while the Song of Ages Past effect is active, Stellar Swirl reaction DMG dealt by
++// nearby party members is elevated by 25% while Hydro DMG and Cryo DMG dealt are increased by 60%.
++func (c *char) c6Init() {
++	if c.Base.Cons < 6 {
++		return
++	}
++
++	c.c6Buff = make([]float64, attributes.EndStatType)
++	c.c6Buff[attributes.CryoP] = 0.6
++	c.c6Buff[attributes.HydroP] = 0.6
++
++	c.Core.Events.Subscribe(event.OnApplyAttack, func(args ...any) {
++		atk := args[0].(*info.AttackEvent)
++
++		if !c.StatusIsActive(skillKey) {
++			return
++		}
++		// do not apply elevation to Reaction damage here because the elevation is already applied at the contributor level
++		if atk.Info.AttackTag == attacks.AttackTagDirectStellarSwirl {
++			atk.Info.Elevation += 0.25
++		}
++	}, c6Key)
++
++	c.Core.Events.Subscribe(event.OnSpecialReactionAttack, func(args ...any) {
++		atk := args[1].(*info.AttackEvent)
++
++		if !c.StatusIsActive(skillKey) {
++			return
++		}
++		if atk.Info.AttackTag == attacks.AttackTagReactionStellarSwirl {
++			atk.Info.Elevation += 0.25
++		}
++	}, c6Key)
++}
++
++func (c *char) c6c2CheckActive() bool {
++	return c.Base.Cons < 6
++}
++
++func (c *char) c6OnSkill() {
++	if c.Base.Cons < 6 {
++		return
++	}
++
++	for _, char := range c.Core.Player.Chars() {
++		char.AddStatMod(character.StatMod{
++			Base: modifier.NewBase(c6Key, skillDur+c.c2SkillDurBonus()),
++			Amount: func() []float64 {
++				return c.c6Buff
++			},
++		})
++	}
++}
+diff --git a/internal/characters/vodyanitsa/skill.go b/internal/characters/vodyanitsa/skill.go
+new file mode 100644
+index 000000000..8b4aa9267
+--- /dev/null
++++ b/internal/characters/vodyanitsa/skill.go
+@@ -0,0 +1,170 @@
++package vodyanitsa
++
++import (
++	"github.com/genshinsim/gcsim/internal/frames"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/attacks"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/combat"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/enemy"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++)
++
++var skillFrames []int
++
++const (
++	skillHitmark   = 34
++	skillFirstTick = 190
++	skillFirstHeal = 139
++	skillDur       = 1042
++	particleICDKey = "vodyanitsa-particle-icd"
++	skillKey       = "vodyanitsa-skill"
++)
++
++func init() {
++	skillFrames = frames.InitAbilSlice(59)
++	skillFrames[action.ActionAttack] = 57
++	skillFrames[action.ActionCharge] = 57
++	skillFrames[action.ActionSkill] = 58
++	skillFrames[action.ActionBurst] = 58
++	skillFrames[action.ActionDash] = 57
++	skillFrames[action.ActionWalk] = 57
++	skillFrames[action.ActionSwap] = 57
++}
++
++// Reveals her true Water Imp form, dealing AoE Hydro DMG and gaining the Song of Ages Past effect:
++// While this effect is active, Vodyanitsa summons the ancient Horn of Spring's Call, periodically
++// moving closer to an opponent in a swift movement to attack them, dealing Hydro DMG.
++// The above two types of attacks will also decrease the Hydro RES and Cryo RES of opponents hit.
++// Additionally, while the Song of Ages Past effect is active, your active character gains increased
++// resistance to interruption and periodically regenerates HP based on Vodyanitsa's Max HP.
++func (c *char) Skill(p map[string]int) (action.Info, error) {
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Rechitativ: Sonorous Dawn",
++		AttackTag:  attacks.AttackTagElementalArt,
++		ICDTag:     attacks.ICDTagElementalArt,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Hydro,
++		Durability: 25,
++		Mult:       skill[c.TalentLvlSkill()],
++		UseHP:      true,
++	}
++
++	ap := combat.NewCircleHitOnTarget(c.Core.Combat.Player(), nil, 5.5)
++
++	c.Core.QueueAttack(ai, ap, skillHitmark, skillHitmark, c.particleCB, c.skillShredCB)
++
++	src := c.Core.F
++	c.skillSrc = src
++	c.Core.Tasks.Add(func() { c.skillHealTask(src) }, skillFirstHeal)
++	c.Core.Tasks.Add(func() { c.skillAttackTask(src) }, skillHitmark+skillFirstTick)
++
++	c.AddStatus(skillKey, skillDur+c.c2SkillDurBonus(), false)
++
++	c.SetCD(action.ActionSkill, 16*60)
++
++	c.a1OnSkill(src)
++	c.a4OnSkill()
++	c.c6OnSkill()
++
++	return action.Info{
++		Frames:          frames.NewAbilFunc(skillFrames),
++		AnimationLength: skillFrames[action.InvalidAction],
++		CanQueueAfter:   skillHitmark,
++		State:           action.SkillState,
++	}, nil
++}
++
++func (c *char) skillAttackTask(src int) {
++	if !c.StatusIsActive(skillKey) {
++		return
++	}
++
++	if c.skillSrc != src {
++		return
++	}
++
++	ai := info.AttackInfo{
++		ActorIndex: c.Index(),
++		Abil:       "Horn of Spring's Call",
++		AttackTag:  attacks.AttackTagElementalArt,
++		ICDTag:     attacks.ICDTagElementalArt,
++		ICDGroup:   attacks.ICDGroupDefault,
++		StrikeType: attacks.StrikeTypeDefault,
++		Element:    attributes.Hydro,
++		Durability: 25,
++		Mult:       skill[c.TalentLvlSkill()],
++		UseHP:      true,
++	}
++
++	ap := combat.NewCircleHitOnTarget(c.Core.Combat.PrimaryTarget(), nil, 3)
++
++	c.Core.QueueAttack(ai, ap, 0, 0, c.particleCB, c.skillShredCB)
++
++	c.c2OnSkillAttack()
++	c.Core.Tasks.Add(func() { c.skillAttackTask(src) }, 176)
++}
++
++func (c *char) skillHealTask(src int) {
++	if !c.StatusIsActive(skillKey) {
++		return
++	}
++
++	if c.skillSrc != src {
++		return
++	}
++
++	maxhp := c.MaxHP()
++
++	healBonus := c.c4BeforeHeal()
++
++	c.Core.Player.Heal(info.HealInfo{
++		Caller:  c.Index(),
++		Target:  c.Core.Player.Active(),
++		Message: "Song of Ages Past",
++		Src:     skillHealRatio[c.TalentLvlSkill()]*maxhp + skillHealFlat[c.TalentLvlSkill()],
++		Bonus:   c.Stat(attributes.Heal) + healBonus,
++	})
++	c.c1OnHeal()
++
++	c.Core.Tasks.Add(func() { c.skillHealTask(src) }, 88)
++}
++
++func (c *char) skillShredCB(ac info.AttackCB) {
++	if ac.Target.Type() != info.TargettableEnemy {
++		return
++	}
++
++	e, ok := ac.Target.(*enemy.Enemy)
++	if !ok {
++		return
++	}
++
++	e.AddResistMod(info.ResistMod{
++		Base:  modifier.NewBaseWithHitlag(skillKey+"-hydro", 6*60),
++		Ele:   attributes.Hydro,
++		Value: -skillShred[c.TalentLvlSkill()],
++	})
++
++	e.AddResistMod(info.ResistMod{
++		Base:  modifier.NewBaseWithHitlag(skillKey+"-cryo", 6*60),
++		Ele:   attributes.Cryo,
++		Value: -skillShred[c.TalentLvlSkill()],
++	})
++}
++
++func (c *char) particleCB(ac info.AttackCB) {
++	if ac.Target.Type() != info.TargettableEnemy {
++		return
++	}
++
++	if c.StatusIsActive(particleICDKey) {
++		return
++	}
++
++	c.AddStatus(particleICDKey, 0.2*60, true)
++	c.Core.QueueParticle(c.Base.Key.String(), 1, attributes.Hydro, c.ParticleDelay)
++}
+diff --git a/internal/characters/vodyanitsa/vodyanitsa.go b/internal/characters/vodyanitsa/vodyanitsa.go
+new file mode 100644
+index 000000000..7af855089
+--- /dev/null
++++ b/internal/characters/vodyanitsa/vodyanitsa.go
+@@ -0,0 +1,79 @@
++package vodyanitsa
++
++import (
++	tmpl "github.com/genshinsim/gcsim/internal/template/character"
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/reactable"
++)
++
++type char struct {
++	*tmpl.Character
++
++	skillSrc int
++
++	nearbyWanderingVortexExp int
++	leadVocal                int
++	chorus                   int
++
++	c1Buff   []float64
++	c2Buff   []float64
++	c4Buff   []float64
++	c6Buff   []float64
++	c4Stacks int
++}
++
++func NewChar(s *core.Core, w *character.CharWrapper, _ info.CharacterProfile) error {
++	c := char{}
++	c.Character = tmpl.NewWithWrapper(s, w)
++
++	c.EnergyMax = 60
++	c.NormalHitNum = normalHitNum
++	c.BurstCon = 5
++	c.SkillCon = 3
++
++	w.Character = &c
++
++	return nil
++}
++
++func (c *char) Init() error {
++	// kairi: Stellar Swirl damage worked out 3 frames later only in teams with her (see reactable).
++	c.Core.Flags.Custom[reactable.StellarSwirlLateCalcKey] = 1
++	c.a1Init()
++	c.a4Init()
++
++	c.c1Init()
++	c.c2Init()
++	c.c4Init()
++	c.c6Init()
++	return nil
++}
++
++func (c *char) Condition(fields []string) (any, error) {
++	switch fields[0] {
++	case "lead-vocal":
++		if !c.StatusIsActive(a4Key) {
++			return 0, nil
++		}
++		return c.leadVocal, nil
++	case "chorus":
++		if !c.StatusIsActive(a4Key) {
++			return 0, nil
++		}
++		return c.chorus, nil
++	default:
++		return c.Character.Condition(fields)
++	}
++}
++
++func (c *char) AnimationStartDelay(k info.AnimationDelayKey) int {
++	switch k {
++	case info.AnimationXingqiuN0StartDelay:
++		return 5
++	case info.AnimationYelanN0StartDelay:
++		return 5
++	}
++	return c.Character.AnimationStartDelay(k)
++}
+diff --git a/internal/characters/vodyanitsa/zz_vodyanitsa.dm.go b/internal/characters/vodyanitsa/zz_vodyanitsa.dm.go
+new file mode 100644
+index 000000000..89fe2618c
+--- /dev/null
++++ b/internal/characters/vodyanitsa/zz_vodyanitsa.dm.go
+@@ -0,0 +1,250 @@
++// Code generated by "pipeline"; DO NOT EDIT.
++
++package vodyanitsa
++
++import (
++	"fmt"
++	"slices"
++
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/action"
++	"github.com/genshinsim/gcsim/pkg/core/keys"
++	"github.com/genshinsim/gcsim/pkg/gcs/validation"
++)
++
++func init() {
++	core.RegisterCharFunc(keys.Vodyanitsa, NewChar)
++	paramsFor := map[action.Action][]string{
++		action.ActionAttack: {"travel"},
++		action.ActionCharge: {"travel"},
++	}
++	validation.RegisterCharParamValidationFunc(keys.Vodyanitsa, func(a action.Action, keys []string) error {
++		valid, ok := paramsFor[a]
++		if !ok {
++			return nil
++		}
++		for _, v := range keys {
++			if !slices.Contains(valid, v) {
++				return fmt.Errorf("key %v is invalid for action %v", v, a)
++			}
++		}
++		return nil
++	})
++}
++
++var (
++	attack = [][]float64{
++		{ // attack: PsyshkhweArietta - 1-Hit DMG: {0}
++			0.433848,
++			0.466387,
++			0.498925,
++			0.54231,
++			0.574849,
++			0.607387,
++			0.650772,
++			0.694157,
++			0.737542,
++			0.780926,
++			0.824311,
++			0.867696,
++			0.921927,
++			0.976158,
++			1.030389,
++		},
++		{ // attack: PsyshkhweArietta - 2-Hit DMG: {1}
++			0.40232,
++			0.432494,
++			0.462668,
++			0.5029,
++			0.533074,
++			0.563248,
++			0.60348,
++			0.643712,
++			0.683944,
++			0.724176,
++			0.764408,
++			0.80464,
++			0.85493,
++			0.90522,
++			0.95551,
++		},
++		{ // attack: PsyshkhweArietta - 3-Hit DMG: {2}
++			0.493016,
++			0.529992,
++			0.566968,
++			0.61627,
++			0.653246,
++			0.690222,
++			0.739524,
++			0.788826,
++			0.838127,
++			0.887429,
++			0.93673,
++			0.986032,
++			1.047659,
++			1.109286,
++			1.170913,
++		},
++		{ // attack: PsyshkhweArietta - 4-Hit DMG: {3}
++			0.655632,
++			0.704804,
++			0.753977,
++			0.81954,
++			0.868712,
++			0.917885,
++			0.983448,
++			1.049011,
++			1.114574,
++			1.180138,
++			1.245701,
++			1.311264,
++			1.393218,
++			1.475172,
++			1.557126,
++		},
++	}
++	// attack: PsyshkhweArietta - Charged Attack DMG: {4}
++	charge = []float64{
++		1.2376,
++		1.33042,
++		1.42324,
++		1.547,
++		1.63982,
++		1.73264,
++		1.8564,
++		1.98016,
++		2.10392,
++		2.22768,
++		2.35144,
++		2.4752,
++		2.6299,
++		2.7846,
++		2.9393,
++	}
++	// skill: RechitativSonorousDawn - Skill DMG: {0} Max HP
++	skill = []float64{
++		0.03272,
++		0.035174,
++		0.037628,
++		0.0409,
++		0.043354,
++		0.045808,
++		0.04908,
++		0.052352,
++		0.055624,
++		0.058896,
++		0.062168,
++		0.06544,
++		0.06953,
++		0.07362,
++		0.07771,
++	}
++	// skill: RechitativSonorousDawn - Horn of Spring's Call DMG: {3} Max HP
++	skillDot = []float64{
++		0.03272,
++		0.035174,
++		0.037628,
++		0.0409,
++		0.043354,
++		0.045808,
++		0.04908,
++		0.052352,
++		0.055624,
++		0.058896,
++		0.062168,
++		0.06544,
++		0.06953,
++		0.07362,
++		0.07771,
++	}
++	// skill: RechitativSonorousDawn - Song of Ages Past Healing: {4} + {5} Max HP
++	skillHealFlat = []float64{
++		269.62854,
++		296.59515,
++		325.80896,
++		357.27,
++		390.97824,
++		426.93372,
++		465.1364,
++		505.5863,
++		548.28345,
++		593.2278,
++		640.4193,
++		689.8581,
++		741.54407,
++		795.4773,
++		851.6577,
++	}
++	// skill: RechitativSonorousDawn - Song of Ages Past Healing: {4} + {5} Max HP
++	skillHealRatio = []float64{
++		0.028,
++		0.0301,
++		0.0322,
++		0.035,
++		0.0371,
++		0.0392,
++		0.042,
++		0.0448,
++		0.0476,
++		0.0504,
++		0.0532,
++		0.056,
++		0.0595,
++		0.063,
++		0.0665,
++	}
++	// skill: RechitativSonorousDawn - Hydro/Cryo RES Reduction: {7}
++	skillShred = []float64{
++		0.165,
++		0.18,
++		0.195,
++		0.21,
++		0.225,
++		0.24,
++		0.255,
++		0.27,
++		0.285,
++		0.3,
++		0.318,
++		0.336,
++		0.354,
++		0.372,
++		0.39,
++	}
++	// burst: KodaSinkWithThee - Skill DMG: {0} Max HP
++	burst = []float64{
++		0.456768,
++		0.491026,
++		0.525283,
++		0.57096,
++		0.605218,
++		0.639475,
++		0.685152,
++		0.730829,
++		0.776506,
++		0.822182,
++		0.867859,
++		0.913536,
++		0.970632,
++		1.027728,
++		1.084824,
++	}
++	// burst: KodaSinkWithThee - Song of Ages Past DMG Bonus: {1}
++	burstBonus = []float64{
++		0.48,
++		0.516,
++		0.552,
++		0.6,
++		0.636,
++		0.672,
++		0.72,
++		0.768,
++		0.816,
++		0.864,
++		0.912,
++		0.96,
++		1.02,
++		1.08,
++		1.14,
++	}
++)
+diff --git a/internal/services/assets/character.dm.go b/internal/services/assets/character.dm.go
+index d95966905..5eb14aff9 100644
+--- a/internal/services/assets/character.dm.go
++++ b/internal/services/assets/character.dm.go
+@@ -116,6 +116,7 @@ var avatarMap = map[string]string{
+ 	"varesa":            "UI_AvatarIcon_Varesa",
+ 	"varka":             "UI_AvatarIcon_Varka",
+ 	"venti":             "UI_AvatarIcon_Venti",
++	"vodyanitsa":        "UI_AvatarIcon_Vodyanitsa",
+ 	"wanderer":          "UI_AvatarIcon_Wanderer",
+ 	"wriothesley":       "UI_AvatarIcon_Wriothesley",
+ 	"xiangling":         "UI_AvatarIcon_Xiangling",
+diff --git a/pkg/catalog/character.dm.go b/pkg/catalog/character.dm.go
+index 8c858db2e..38af559fd 100644
+--- a/pkg/catalog/character.dm.go
++++ b/pkg/catalog/character.dm.go
+@@ -17184,6 +17184,158 @@ var CharacterMap = map[keys.Char]*model.AvatarData{
+ 			BurstEnergyCost: 60.0,
+ 		},
+ 	},
++	keys.Vodyanitsa: {
++		Id:          10000140,
++		SubId:       14001,
++		Key:         "vodyanitsa",
++		Rarity:      model.QualityType_QUALITY_ORANGE,
++		Body:        model.BodyType_BODY_GIRL,
++		Region:      model.AssocType_ASSOC_TYPE_SNEZHNAYA,
++		Element:     model.ElementType_Water,
++		WeaponClass: model.WeaponType_WEAPON_CATALYST,
++		IconName:    "UI_AvatarIcon_Vodyanitsa",
++		Stats: &model.AvatarStatsData{
++			BaseHp:   1153.5172,
++			BaseAtk:  8.379,
++			BaseDef:  37.6929,
++			HpCurve:  model.GrowCurveType_GROW_CURVE_HP_S5,
++			AtkCurve: model.GrowCurveType_GROW_CURVE_ATTACK_S5,
++			DefCruve: model.GrowCurveType_GROW_CURVE_HP_S5,
++			PromoData: []*model.PromotionData{
++				{
++					MaxLevel: 20,
++				},
++				{
++					MaxLevel: 40,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    989.0367,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    32.319,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    7.18371,
++						},
++					},
++				},
++				{
++					MaxLevel: 50,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    1691.7733,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    55.2825,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    12.287925,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_HP_PERCENT,
++							Value:    0.072,
++						},
++					},
++				},
++				{
++					MaxLevel: 60,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    2628.7554,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    85.9005,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    19.093546,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_HP_PERCENT,
++							Value:    0.144,
++						},
++					},
++				},
++				{
++					MaxLevel: 70,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    3331.492,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    108.864,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    24.19776,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_HP_PERCENT,
++							Value:    0.144,
++						},
++					},
++				},
++				{
++					MaxLevel: 80,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    4034.2285,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    131.8275,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    29.301975,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_HP_PERCENT,
++							Value:    0.216,
++						},
++					},
++				},
++				{
++					MaxLevel: 90,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_HP,
++							Value:    4736.9653,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_DEFENSE,
++							Value:    154.791,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    34.40619,
++						},
++						{
++							PropType: model.FightPropType_FIGHT_PROP_HP_PERCENT,
++							Value:    0.288,
++						},
++					},
++				},
++			},
++		},
++		SkillDetails: &model.AvatarSkillsData{
++			Skill:           11402,
++			Burst:           11405,
++			Attack:          11401,
++			BurstEnergyCost: 60.0,
++		},
++	},
+ 	keys.Wanderer: {
+ 		Id:          10000075,
+ 		SubId:       7501,
+diff --git a/pkg/core/event/event.go b/pkg/core/event/event.go
+index c09f0497f..213ff7864 100644
+--- a/pkg/core/event/event.go
++++ b/pkg/core/event/event.go
+@@ -46,7 +46,8 @@ const (
+ 	OnStellarSwirl       // target, AttackEvent
+ 	OnShatter            // target, AttackEvent; at the end to simplify all reaction event subs since it's normally not considered as an elemental reaction
+ 	ReactionEventEndDelim
+-	OnDendroCore // Gadget
++	OnDendroCore    // Gadget
++	OnStellarVortex // Gadget
+ 	// other stuff
+ 	OnStamUse           // abil
+ 	OnShielded          // shield
+diff --git a/pkg/core/keys/character.dm.go b/pkg/core/keys/character.dm.go
+index 1135f0fb9..0925856df 100644
+--- a/pkg/core/keys/character.dm.go
++++ b/pkg/core/keys/character.dm.go
+@@ -156,6 +156,7 @@ const (
+ 	Varesa                        // varesa
+ 	Varka                         // varka
+ 	Venti                         // venti
++	Vodyanitsa                    // vodyanitsa
+ 	Wanderer                      // wanderer
+ 	Wriothesley                   // wriothesley
+ 	Xiangling                     // xiangling
+@@ -291,6 +292,7 @@ var _CharNames = [...]string{
+ 	"varesa",
+ 	"varka",
+ 	"venti",
++	"vodyanitsa",
+ 	"wanderer",
+ 	"wriothesley",
+ 	"xiangling",
+@@ -426,6 +428,7 @@ var _CharValues = [...]Char{
+ 	Varesa,
+ 	Varka,
+ 	Venti,
++	Vodyanitsa,
+ 	Wanderer,
+ 	Wriothesley,
+ 	Xiangling,
+diff --git a/pkg/reactable/stellarswirl.go b/pkg/reactable/stellarswirl.go
+index 9575c6208..119147187 100644
+--- a/pkg/reactable/stellarswirl.go
++++ b/pkg/reactable/stellarswirl.go
+@@ -15,12 +15,16 @@ import (
+ var sswContributorMult = []float64{0.6, 0.3, 0.05, 0.05}
+ 
+ const (
+-	StellarSwirlKey    = "stellar-swirl"
+-	sswStackKey        = StellarSwirlKey + "-stacks"
+-	sswMaxStacks       = 6
+-	sswContributionKey = "stellar-swirl-contribution"
+-	sswOwnerKey        = "stellar-swirl-owner"
+-	RadianceSwirlKey   = "radiance-stellar-swirl"
++	StellarSwirlKey          = "stellar-swirl"
++	sswStackKey              = StellarSwirlKey + "-stacks"
++	sswMaxStacks             = 6
++	sswContributionKey       = "stellar-swirl-contribution"
++	sswOwnerKey              = "stellar-swirl-owner"
++	RadianceSwirlKey         = "radiance-stellar-swirl"
++	RadianceSwirlBonusDurKey = "radiance-stellar-swirl-bonus-dur"
++	// kairi: set by Vodyanitsa. Only then is the Stellar Swirl damage worked out 3 frames later (as
++	// her pull request does for everyone); every other team keeps gcsim v2.50.0's timing.
++	StellarSwirlLateCalcKey = "stellar-swirl-late-calc"
+ )
+ 
+ type sswContribution = struct {
+@@ -31,8 +35,9 @@ type sswContribution = struct {
+ }
+ 
+ func (r *Reactable) queueStellarSwirl(charIndex int, mod info.ReactionModKey) {
++	bonusDur := int(r.core.Flags.Custom[RadianceSwirlBonusDurKey])
+ 	for _, c := range r.core.Player.Chars() {
+-		c.AddStatus(RadianceSwirlKey, 8*60, false)
++		c.AddStatus(RadianceSwirlKey, 8*60+bonusDur, false)
+ 	}
+ 
+ 	// stellar swirl triggers an aoe attack
+@@ -63,9 +68,17 @@ func (r *Reactable) queueStellarSwirl(charIndex int, mod info.ReactionModKey) {
+ 		if willHit, _ := e.AttackWillLand(ap); !willHit {
+ 			continue
+ 		}
+-		ai, snap := r.calcStellarSwirlDmg(e, ai, ap, contribMap, 0.75)
+-		ai.ActorIndex = charIndex
+-		r.core.QueueAttackWithSnap(ai, snap, combat.NewSingleTargetHit(e.Key()), 3)
++		if r.core.Flags.Custom[StellarSwirlLateCalcKey] == 0 {
++			ai, snap := r.calcStellarSwirlDmg(e, ai, ap, contribMap, 0.75)
++			ai.ActorIndex = charIndex
++			r.core.QueueAttackWithSnap(ai, snap, combat.NewSingleTargetHit(e.Key()), 3)
++			continue
++		}
++		r.core.Tasks.Add(func() {
++			ai, snap := r.calcStellarSwirlDmg(e, ai, ap, contribMap, 0.75)
++			ai.ActorIndex = charIndex
++			r.core.QueueAttackWithSnap(ai, snap, combat.NewSingleTargetHit(e.Key()), 0)
++		}, 3)
+ 	}
+ 
+ 	r.addSSwContributor(contribMap)
+diff --git a/pkg/reactable/stellarswirl_gadget.go b/pkg/reactable/stellarswirl_gadget.go
+index 39bbd5f68..e51018da8 100644
+--- a/pkg/reactable/stellarswirl_gadget.go
++++ b/pkg/reactable/stellarswirl_gadget.go
+@@ -34,6 +34,7 @@ func (r *Reactable) newStellarVortex() *StellarVortex {
+ 	p.OnKill = p.explode
+ 	p.OnExpiry = p.explode
+ 	r.core.Combat.AddGadget(p)
++	r.core.Events.Emit(event.OnStellarVortex, p)
+ 	return p
+ }
+ 
+diff --git a/pkg/result/check.go b/pkg/result/check.go
+index ba1cfa37e..5eea8bfbc 100644
+--- a/pkg/result/check.go
++++ b/pkg/result/check.go
+@@ -11,7 +11,8 @@ var incompleteCharacters = []keys.Char{
+ 	keys.InvalidChar,
+ 	keys.Iansan,
+ 	keys.Linnea,
+-	keys.Nefer, // kairi: experimental (unmerged pull request), so results show gcsim's incomplete warning
++	keys.Vodyanitsa, // kairi: experimental (unmerged pull request), so results show gcsim's incomplete warning
++	keys.Nefer,      // kairi: experimental (unmerged pull request), so results show gcsim's incomplete warning
+ }
+ 
+ func IsCharacterComplete(char keys.Char) bool {
+diff --git a/pkg/shortcut/character.dm.go b/pkg/shortcut/character.dm.go
+index 79dcc7a26..97c45f404 100644
+--- a/pkg/shortcut/character.dm.go
++++ b/pkg/shortcut/character.dm.go
+@@ -166,6 +166,8 @@ var CharNameToKey = map[string]keys.Char{
+ 	"varesa":            keys.Varesa,
+ 	"varka":             keys.Varka,
+ 	"venti":             keys.Venti,
++	"vodyanitsa":        keys.Vodyanitsa,
++	"vody":              keys.Vodyanitsa,
+ 	"wanderer":          keys.Wanderer,
+ 	"kabukimono":        keys.Wanderer,
+ 	"kuni":              keys.Wanderer,
+diff --git a/pkg/simulation/imports.character.dm.go b/pkg/simulation/imports.character.dm.go
+index a8c1b48af..0dde17913 100644
+--- a/pkg/simulation/imports.character.dm.go
++++ b/pkg/simulation/imports.character.dm.go
+@@ -117,6 +117,7 @@ import (
+ 	_ "github.com/genshinsim/gcsim/internal/characters/varesa"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/varka"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/venti"
++	_ "github.com/genshinsim/gcsim/internal/characters/vodyanitsa"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/wanderer"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/wriothesley"
+ 	_ "github.com/genshinsim/gcsim/internal/characters/xiangling"

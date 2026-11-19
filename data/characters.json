@@ -13008,7 +13008,7 @@
   "rarity": 5,
   "version": "7.1",
   "ascension_stat": "HP",
-  "gcsim_key": null,
+  "gcsim_key": "vodyanitsa",
   "c3_boosts": "Skill",
   "c5_boosts": "Burst",
   "stats": [
@@ -13124,7 +13124,8 @@
     "base_def": 518.6028708,
     "ascension_value_excl_base_crit": 0.288
    }
-  ]
+  ],
+  "gcsim_patch": "vodyanitsa"
  },
  {
   "name": "Wanderer",

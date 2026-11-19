@@ -9,6 +9,7 @@ reviewed or accepted the code, so results may not match the game. The app marks 
 | --- | --- | --- |
 | `linnea.patch` | Linnea | [genshinsim/gcsim#2596](https://github.com/genshinsim/gcsim/pull/2596) at 0e439a5, plus three timing fixes (see the top of the file) |
 | `nefer.patch` | Nefer | [genshinsim/gcsim#3045](https://github.com/genshinsim/gcsim/pull/3045) at 4932d0e, moved onto v2.50.0 after `linnea.patch`, plus fixes: plunge removed, N4 length, burst energy timing, burst Veil bonus, no Slither movement, marked incomplete (see the top of the file) |
+| `vodyanitsa.patch` | Vodyanitsa | [genshinsim/gcsim#3274](https://github.com/genshinsim/gcsim/pull/3274) by a gcsim maintainer, at 5fb8aa6 (based on v2.50.0), applied after `nefer.patch`, plus: its Stellar Swirl timing change only in teams with her (other teams unchanged), marked incomplete (see the top of the file) |
 
 ## How they're used
 

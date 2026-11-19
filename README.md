@@ -46,7 +46,7 @@ Added during Phase 1 at the owner's request: Opener/Loop rotations with `?`, `@`
 
 ### Known limits
 
-- Six characters aren't in gcsim yet, and Linnea and Nefer are experimental (see below); a team simulated without one of its members shows too little DPS.
+- Five characters aren't in gcsim yet, and Linnea, Nefer and Vodyanitsa are experimental (see below); a team simulated without one of its members shows too little DPS.
 - Results are averages of random fights: small differences between runs can be luck. Compare shows when that's the case; 1,000 fights give the most precise numbers.
 - With an enemy HP, the time limit is checked before each Loop turn, so a fight can run a little past it (the turn in progress finishes).
 - Enemies are standing targets with their real resistances; boss mechanics (shields, phases where they can't be hit, moving around, resistance changes) aren't simulated.
@@ -102,9 +102,9 @@ To upgrade:
 
 ### Characters gcsim doesn't support yet
 
-As of gcsim v2.50.0, these characters are in the app's data (stats, talents and buffs) but gcsim can't simulate them yet, so the Setup screen warns and skips them: **Kachina, Lohen, Mitya, Valeriy, Vesna, Vodyanitsa**. A team simulated without one of its members shows too little DPS, because that character's damage and buffs are missing. Sandrone was added in v2.50.0.
+As of gcsim v2.50.0, these characters are in the app's data (stats, talents and buffs) but gcsim can't simulate them yet, so the Setup screen warns and skips them: **Kachina, Lohen, Mitya, Valeriy, Vesna**. A team simulated without one of its members shows too little DPS, because that character's damage and buffs are missing. Sandrone was added in v2.50.0.
 
-**Experimental:** **Linnea** and **Nefer** aren't in gcsim yet either, but the app adds them from unfinished gcsim pull requests (`patches/linnea.patch` and `patches/nefer.patch`, with fixes so gcsim's own checks pass and the bugs its review found are corrected). They're marked "Experimental" in the app and gcsim flags them as incomplete in results: the code hasn't been reviewed by gcsim's maintainers, so their numbers may not match the game. Nefer can't plunge (her plunge timings were never counted). See `patches/README.md`.
+**Experimental:** **Linnea**, **Nefer** and **Vodyanitsa** aren't in gcsim yet either, but the app adds them from unfinished gcsim pull requests (`patches/linnea.patch`, `patches/nefer.patch` and `patches/vodyanitsa.patch`, with fixes so gcsim's own checks pass, the bugs its review found are corrected, and teams without them are unaffected). They're marked "Experimental" in the app and gcsim flags them as incomplete in results: the code hasn't been reviewed by gcsim's maintainers, so their numbers may not match the game. Nefer can't plunge (her plunge timings were never counted). See `patches/README.md`.
 
 ## For developers
 
