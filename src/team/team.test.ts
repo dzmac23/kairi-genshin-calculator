@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameData, type GameData } from '../data/gameData';
 import { checkTeam, num, teamToGcsim } from './gcsim';
@@ -50,9 +50,20 @@ describe('gcsim v2.50.0 support', () => {
     expect(teamToGcsim(t, data).split('\n')[0]).toBe('sandrone char lvl=90/90 cons=0 talent=9,9,9;');
   });
 
-  it('lists exactly the eight characters gcsim v2.50.0 does not support', () => {
+  it('lists exactly the seven characters gcsim v2.50.0 does not support, and the ones added by patches', () => {
     const unsupported = data.characters.filter((c) => !c.gcsim_key).map((c) => c.name);
-    expect(unsupported).toEqual(['Kachina', 'Linnea', 'Lohen', 'Mitya', 'Nefer', 'Valeriy', 'Vesna', 'Vodyanitsa']);
+    expect(unsupported).toEqual(['Kachina', 'Lohen', 'Mitya', 'Nefer', 'Valeriy', 'Vesna', 'Vodyanitsa']);
+    const patched = data.characters.filter((c) => c.gcsim_patch).map((c) => `${c.name}: patches/${c.gcsim_patch}.patch`);
+    expect(patched).toEqual(['Linnea: patches/linnea.patch']);
+    // Every patch in patches/ has a character, and every patched character has a patch file.
+    const files = readdirSync('patches').filter((f) => f.endsWith('.patch')).map((f) => f.replace('.patch', ''));
+    expect(files.sort()).toEqual(data.characters.filter((c) => c.gcsim_patch).map((c) => c.gcsim_patch).sort());
+  });
+
+  it('warns that a patched character is experimental, without blocking a run', () => {
+    const t: Team = [{ ...team[0], character: 'Linnea', weapon: data.weapons.find((w) => w.gcsim_key === 'favoniuswarbow')!.name }];
+    const p = checkTeam(t, data).find((x) => x.message.includes('experimental'));
+    expect(p).toMatchObject({ slot: 0, blocking: false });
   });
 });
 

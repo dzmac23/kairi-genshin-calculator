@@ -14,6 +14,8 @@
 #
 # Environment variables (optional):
 #   GCSIM_SRC  path to an existing gcsim checkout at the pinned tag (skips cloning)
+#
+# Patches in patches/ (characters gcsim doesn't have yet) are applied before building.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,7 +30,34 @@ if [ ! -d "$src/.git" ]; then
 fi
 
 commit="$(git -C "$src" rev-parse HEAD)"
-echo "Building gcsim $tag ($commit)"
+
+# Characters gcsim doesn't have yet, from unmerged gcsim pull requests: every patches/<name>.patch
+# (see patches/README.md). A patch already applied (a local re-build) is left alone; if a patch no
+# longer applies because gcsim now includes that character itself, it is skipped with a note.
+patches=()
+for patch in "$repo_root"/patches/*.patch; do
+  [ -e "$patch" ] || continue
+  name="$(basename "$patch" .patch)"
+  if git -C "$src" apply --reverse --check "$patch" 2>/dev/null; then
+    echo "Patch $name: already applied"
+    patches+=("$name")
+  elif git -C "$src" apply --check "$patch" 2>/dev/null; then
+    git -C "$src" apply "$patch"
+    echo "Patch $name: applied"
+    patches+=("$name")
+  elif [ -d "$src/internal/characters/$name" ]; then
+    echo "Patch $name: skipped, gcsim $tag already includes $name. Delete patches/$name.patch and update data/characters.json."
+  else
+    echo "Patch $name doesn't apply to gcsim $tag, and gcsim doesn't include $name yet:" >&2
+    git -C "$src" apply --check "$patch" >&2 || true
+    echo "Update patches/$name.patch for this gcsim version (see patches/README.md)." >&2
+    exit 1
+  fi
+done
+patch_list="$(printf '"%s",' "${patches[@]+"${patches[@]}"}")"
+patch_list="[${patch_list%,}]"
+
+echo "Building gcsim $tag ($commit)${patches[*]+ with patches: ${patches[*]}}"
 
 # This is the same command gcsim's own cmd/wasm/build.sh uses. go build also picks up
 # cmd/wasm/default.pgo, a profile gcsim ships to make the engine faster.
@@ -54,6 +83,7 @@ cat > "$out/version.json" <<EOF
   "gcsimTag": "$tag",
   "gcsimCommit": "$commit",
   "goVersion": "$go_version",
+  "patches": $patch_list,
   "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF

@@ -139,7 +139,7 @@ function SlotEditor({
         value: c.name,
         label: c.name,
         hint: `${c.rarity}★ ${c.element} ${c.weapon_type}`,
-        warning: c.gcsim_key ? undefined : 'Not in gcsim yet',
+        warning: c.gcsim_key ? (c.gcsim_patch ? 'Experimental' : undefined) : 'Not in gcsim yet',
       })),
     [data],
   );
@@ -175,6 +175,12 @@ function SlotEditor({
       </div>
 
       <Picker label="Character" value={slot.character} options={characterOptions} onChange={pickCharacter} allowClear />
+      {character?.gcsim_patch && (
+        <p className="warn small">
+          Experimental: gcsim doesn't include {character.name} yet, so this app adds them from an unfinished gcsim pull request. Results
+          may not match the game.
+        </p>
+      )}
       {character && !character.gcsim_key && (
         <p className="warn small">{character.name} is not in gcsim yet. This slot will be skipped in simulations.</p>
       )}
