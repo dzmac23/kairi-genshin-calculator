@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getEngineVersion, type EngineVersion } from '../engine/version';
 import { canShareFiles } from '../history/files';
 
-export type HomeTarget = 'Setup' | 'Run' | 'Results';
+export type HomeTarget = 'Setup' | 'Run' | 'Results' | 'Library';
 
 type Props = {
   onGo: (screen: HomeTarget) => void;
@@ -17,6 +17,7 @@ const STEPS: { screen: HomeTarget; title: string; text: string }[] = [
   { screen: 'Setup', title: 'Set up the team and rotation', text: 'Pick four characters, their weapons, artifact sets and stats, then type the rotation the community way (Furina E D Q > Skirk tE N5 Q …). Save the team: its first rotation becomes its main one.' },
   { screen: 'Run', title: 'Run it', text: 'Switch team or rotation in one tap, set the fight (enemy, optional HP for time to kill, energy), and run 100, 500 or 1,000 fights.' },
   { screen: 'Results', title: 'Read and compare the results', text: 'Team DPS, who does the damage, time lost waiting, rotation timing, damage over the fight, energy. Every run is kept in Run History beside it: tick two runs to see whether a change is really better or just luck.' },
+  { screen: 'Library', title: 'Look things up', text: 'Every character, weapon and artifact set: talents with their scaling at any level, passives, constellations, weapon passives at any refinement, set effects. Works offline.' },
 ];
 
 export default function HomeScreen({ onGo, onBackup, onImportFile, backupMessage, counts }: Props) {
