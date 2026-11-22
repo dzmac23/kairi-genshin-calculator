@@ -92,7 +92,9 @@ export type Team = Slot[];
  */
 export function baselineKey(slot: Slot): string {
   const { character, level, constellation, talents, weapon, weaponLevel, refinement, sets } = slot;
-  return JSON.stringify({ character, level, constellation, talents, weapon, weaponLevel, refinement, sets });
+  // `v` changes when the app changes how the baseline is worked out, so baselines saved on a device
+  // are worked out again (2: Linnea's party buff left out, see NOT_ON_CHARACTER_SCREEN in baseline.ts).
+  return JSON.stringify({ v: 2, character, level, constellation, talents, weapon, weaponLevel, refinement, sets });
 }
 
 /** Totals mode with gcsim's stats without artifacts for this build. */
