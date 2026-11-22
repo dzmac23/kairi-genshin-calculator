@@ -97,3 +97,6 @@ export function refinedPassive(weapon: Weapon & { passive_template?: string }, r
   const values = weapon.refinement_values?.[Math.min(5, Math.max(1, refinement)) - 1] ?? [];
   return weapon.passive_template.replace(/\{(\d+)\}/g, (all, n: string) => (values[Number(n)] !== undefined ? `**${values[Number(n)]}**` : all));
 }
+
+/** An entry of the Library: a kind and a name. */
+export type LibraryItem = { kind: 'characters' | 'weapons' | 'sets'; name: string };

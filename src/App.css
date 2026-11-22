@@ -530,3 +530,9 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .segmented.refine button { min-width: 2.6rem; padding: 0.3rem 0.5rem; }
 .library-filter-fold { margin-top: 0.5rem; }
 .library-filter-fold summary { cursor: pointer; color: var(--accent); }
+
+/* ⓘ panels on the Setup screen */
+.info-panel { margin: 0.1rem 0 0.6rem; }
+.info-toggle { padding: 0.2rem 0; }
+.info-panel.open .info-body { border-left: 3px solid var(--accent); background: #5ec8f20d; border-radius: 0 8px 8px 0; padding: 0.4rem 0.75rem 0.6rem; margin-top: 0.3rem; }
+.library-details.compact .details-section:first-child { border-top: 0; margin-top: 0; padding-top: 0.2rem; }

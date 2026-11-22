@@ -40,12 +40,18 @@ export function CharacterDetails({
   data,
   lib,
   build,
+  compact,
 }: {
   character: Character;
   data: GameData;
   lib: Library;
   /** The team slot's choices, when shown from the Setup screen. */
   build?: { level?: string; constellation?: number; talents?: number[] };
+  /**
+   * For the Setup screen's ⓘ panel: no heading or stats (Setup shows those), and each talent's
+   * scaling at the slot's own talent level, with C3/C5 added.
+   */
+  compact?: boolean;
 }) {
   const text = lib.characters[character.name];
   const levels = character.stats.map((s) => s.level);
@@ -55,9 +61,18 @@ export function CharacterDetails({
   const special = character.gcsim_key ? data.special.get(character.gcsim_key) : undefined;
   const scaling = lib.scaling[character.name] ?? {};
   const cons = build?.constellation;
+  /** A talent's level for the scaling table: the slot's level plus C3/C5 in compact mode, else the picked one. */
+  const levelOf = (kind: string): { level: number; boost: string } => {
+    if (!compact || !build?.talents) return { level: talentLevel, boost: '' };
+    const group = SCALING_GROUP[kind];
+    const base = build.talents[group === 'Normal Attack' ? 0 : group === 'Burst' ? 2 : 1] ?? 1;
+    const boosts = [cons !== undefined && cons >= 3 && character.c3_boosts === group ? 'C3' : '', cons !== undefined && cons >= 5 && character.c5_boosts === group ? 'C5' : ''].filter(Boolean);
+    return { level: Math.min(15, base + 3 * boosts.length), boost: boosts.length ? ` (${base} + 3 from ${boosts.join(' and ')})` : '' };
+  };
 
   return (
-    <div className="library-details">
+    <div className={`library-details${compact ? ' compact' : ''}`}>
+      {!compact && (
       <div className="details-head">
         <h2>{character.name}</h2>
         <p className="muted small">
@@ -67,8 +82,9 @@ export function CharacterDetails({
         {text?.title && <p className="muted small details-title">{text.title}</p>}
         <GcsimStatus item={character} />
       </div>
+      )}
 
-      {special && (
+      {special && !compact && (
         <div className="special-note">
           <p className="small">
             <strong>⚡ Special mechanics:</strong> {special.special}
@@ -79,6 +95,7 @@ export function CharacterDetails({
         </div>
       )}
 
+      {!compact && (
       <section className="details-section">
         <div className="details-section-head">
           <h3>Stats</h3>
@@ -98,12 +115,14 @@ export function CharacterDetails({
         )}
         <p className="muted small">Every character also has 5% CRIT Rate, 50% CRIT DMG and 100% Energy Recharge.</p>
       </section>
+      )}
 
       {text && (
         <>
           <section className="details-section">
             <div className="details-section-head">
               <h3>Talents</h3>
+              {!compact && (
               <label className="inline-select small">
                 Talent level{' '}
                 <select value={talentLevel} onChange={(e) => setTalentLevel(Number(e.target.value))} aria-label="Talent level">
@@ -114,10 +133,12 @@ export function CharacterDetails({
                   ))}
                 </select>
               </label>
+              )}
             </div>
             {text.talents.map((t) => {
               const group = scaling[SCALING_GROUP[t.kind]];
-              const rows = group ? scalingLines(group, talentLevel) : [];
+              const at = levelOf(t.kind);
+              const rows = group ? scalingLines(group, at.level) : [];
               return (
                 <details key={t.kind} className="talent">
                   <summary>
@@ -126,7 +147,10 @@ export function CharacterDetails({
                   <RichText text={t.text} />
                   {rows.length > 0 && (
                     <table className="table scaling">
-                      <caption className="muted small">At talent level {talentLevel}</caption>
+                      <caption className="muted small">
+                        At talent level {at.level}
+                        {at.boost}
+                      </caption>
                       <tbody>
                         {rows.map((r, i) => (
                           <tr key={i}>
@@ -141,7 +165,9 @@ export function CharacterDetails({
               );
             })}
             <p className="muted small">
-              C3 adds 3 levels to the {character.c3_boosts}, C5 to the {character.c5_boosts}.
+              {character.c3_boosts && character.c5_boosts
+                ? `C3 adds 3 levels to the ${character.c3_boosts}, C5 to the ${character.c5_boosts}.`
+                : `${character.name}'s constellations don't raise talent levels.`}
             </p>
           </section>
 
@@ -175,22 +201,37 @@ export function CharacterDetails({
   );
 }
 
-export function WeaponDetails({ weapon, lib, build }: { weapon: Weapon; lib: Library; build?: { level?: string; refinement?: number } }) {
+export function WeaponDetails({
+  weapon,
+  lib,
+  build,
+  compact,
+}: {
+  weapon: Weapon;
+  lib: Library;
+  build?: { level?: string; refinement?: number };
+  /** For the Setup screen's ⓘ panel: just the passive, at the slot's refinement. */
+  compact?: boolean;
+}) {
   const levels = weapon.stats.map((s) => s.level);
   const [level, setLevel] = useState(build?.level && levels.includes(build.level as never) ? build.level : levels[levels.length - 1]);
-  const [refinement, setRefinement] = useState(build?.refinement ?? 1);
+  const [picked, setRefinement] = useState(build?.refinement ?? 1);
+  const refinement = compact ? (build?.refinement ?? 1) : picked;
   const stats = interpolateStats(weapon.stats, level, ['base_atk', 'substat_value']);
   const passive = refinedPassive(weapon, refinement);
   const description = lib.weapons[weapon.name]?.description;
   return (
-    <div className="library-details">
-      <div className="details-head">
-        <h2>{weapon.name}</h2>
-        <p className="muted small">
-          <span className="rarity">{stars(weapon.rarity)}</span> {weapon.type}
-        </p>
-        <GcsimStatus item={weapon} />
-      </div>
+    <div className={`library-details${compact ? ' compact' : ''}`}>
+      {!compact && (
+        <div className="details-head">
+          <h2>{weapon.name}</h2>
+          <p className="muted small">
+            <span className="rarity">{stars(weapon.rarity)}</span> {weapon.type}
+          </p>
+          <GcsimStatus item={weapon} />
+        </div>
+      )}
+      {!compact && (
       <section className="details-section">
         <div className="details-section-head">
           <h3>Stats</h3>
@@ -209,11 +250,15 @@ export function WeaponDetails({ weapon, lib, build }: { weapon: Weapon; lib: Lib
           </dl>
         )}
       </section>
+      )}
       {passive && (
         <section className="details-section">
           <div className="details-section-head">
-            <h3>{weapon.passive_name || 'Passive'}</h3>
-            {(weapon.refinement_values?.length ?? 0) > 1 && (
+            <h3>
+              {weapon.passive_name || 'Passive'}
+              {compact && (weapon.refinement_values?.length ?? 0) > 1 && <span className="muted small"> · R{refinement}</span>}
+            </h3>
+            {!compact && (weapon.refinement_values?.length ?? 0) > 1 && (
               <div className="segmented refine" role="group" aria-label="Refinement">
                 {[1, 2, 3, 4, 5].map((r) => (
                   <button key={r} className={r === refinement ? 'selected' : ''} onClick={() => setRefinement(r)} aria-pressed={r === refinement}>
@@ -226,7 +271,8 @@ export function WeaponDetails({ weapon, lib, build }: { weapon: Weapon; lib: Lib
           <RichText text={passive} />
         </section>
       )}
-      {description && (
+      {!passive && compact && <p className="muted small">This weapon has no passive.</p>}
+      {description && !compact && (
         <section className="details-section">
           <RichText text={description} className="muted small" />
         </section>
@@ -235,13 +281,15 @@ export function WeaponDetails({ weapon, lib, build }: { weapon: Weapon; lib: Lib
   );
 }
 
-export function SetDetails({ set, build }: { set: ArtifactSet; build?: { pieces?: 2 | 4 } }) {
+export function SetDetails({ set, build, compact }: { set: ArtifactSet; build?: { pieces?: 2 | 4 }; compact?: boolean }) {
   return (
-    <div className="library-details">
-      <div className="details-head">
-        <h2>{set.name}</h2>
-        <GcsimStatus item={set} />
-      </div>
+    <div className={`library-details${compact ? ' compact' : ''}`}>
+      {!compact && (
+        <div className="details-head">
+          <h2>{set.name}</h2>
+          <GcsimStatus item={set} />
+        </div>
+      )}
       {set.two_piece && (
         <section className={`details-section${build?.pieces ? ' unlocked' : ''}`}>
           <h3>2-piece</h3>
@@ -250,7 +298,7 @@ export function SetDetails({ set, build }: { set: ArtifactSet; build?: { pieces?
       )}
       {set.four_piece && (
         <section className={`details-section${build?.pieces === 2 ? ' locked' : build?.pieces === 4 ? ' unlocked' : ''}`}>
-          <h3>4-piece</h3>
+          <h3>4-piece{build?.pieces === 2 && <span className="muted small"> · not active with 2 pieces</span>}</h3>
           <RichText text={set.four_piece} />
         </section>
       )}

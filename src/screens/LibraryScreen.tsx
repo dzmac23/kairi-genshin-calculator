@@ -4,9 +4,11 @@
 import { useMemo, useState } from 'react';
 import { useGameData, type ArtifactSet, type Character, type Weapon } from '../data/gameData';
 import { CharacterDetails, SetDetails, WeaponDetails } from '../library/Details';
-import { useLibrary } from '../library/library';
+import { useLibrary, type LibraryItem } from '../library/library';
 
-type Kind = 'characters' | 'weapons' | 'sets';
+export type { LibraryItem };
+
+type Kind = LibraryItem['kind'];
 const KINDS: { id: Kind; label: string }[] = [
   { id: 'characters', label: 'Characters' },
   { id: 'weapons', label: 'Weapons' },
@@ -15,8 +17,6 @@ const KINDS: { id: Kind; label: string }[] = [
 const ELEMENTS = ['Pyro', 'Hydro', 'Electro', 'Cryo', 'Anemo', 'Geo', 'Dendro'];
 const WEAPON_TYPES = ['Sword', 'Claymore', 'Polearm', 'Bow', 'Catalyst'];
 
-/** What's open: a kind and a name. */
-export type LibraryItem = { kind: Kind; name: string };
 
 export default function LibraryScreen({ open, onOpen }: { open?: LibraryItem; onOpen: (item?: LibraryItem) => void }) {
   const data = useGameData();

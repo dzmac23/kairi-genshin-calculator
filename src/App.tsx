@@ -388,6 +388,11 @@ export default function App() {
             <TeamScreen
               team={team}
               onChange={setTeam}
+              onOpenLibrary={(item) => {
+                setLibraryItem(item);
+                setScreen('Library');
+                window.scrollTo({ top: 0 });
+              }}
               baselineErrors={baselineErrors}
               onClear={teamActions.clear}
               clearNeedsConfirm={activeTeam ? teamDirty : hasTeam}
