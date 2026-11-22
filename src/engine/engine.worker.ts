@@ -77,6 +77,16 @@ async function handle(req: WorkerRequest): Promise<Omit<Extract<WorkerReply, { o
       const details: { snapshot?: number[] }[] = JSON.parse(out).character_details ?? [];
       return { snapshot: details[0]?.snapshot ?? [] };
     }
+    case 'energy': {
+      if (typeof energyNeeded !== 'function') throw new EngineError('This engine is too old for energy targets: reload the app to update it.');
+      return {
+        energy: req.seeds.map((seed) => {
+          const out = energyNeeded(req.config, seed);
+          throwIfError(out);
+          return out;
+        }),
+      };
+    }
     case 'flush': {
       const flushed = flush();
       throwIfError(flushed);

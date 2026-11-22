@@ -13,6 +13,12 @@ in every result (gcsim has no such flag for weapons).
 | `starsealed.patch` | Starsealed Edict (5★ catalyst) | [genshinsim/gcsim#3279](https://github.com/genshinsim/gcsim/pull/3279) at 2b3320f (based on v2.50.0): only the weapon, without three unrelated gcsim fixes on that branch (see the top of the file) |
 | `vodyanitsa.patch` | Vodyanitsa | [genshinsim/gcsim#3274](https://github.com/genshinsim/gcsim/pull/3274) by a gcsim maintainer, at 5fb8aa6 (based on v2.50.0), applied after `nefer.patch`, plus: its Stellar Swirl timing change only in teams with her (other teams unchanged), marked incomplete (see the top of the file) |
 
+### Engine additions
+
+| Patch | What it adds | Why |
+| --- | --- | --- |
+| `wasm-energy.patch` | `energyNeeded(config, seed)` in the browser engine (`cmd/wasm/main.go`): one fight with gcsim's `ignore_burst_energy`, returning for every burst the particle energy before Energy Recharge, flat energy (both by source), the burst's cost and the character's ER | The Setup screen's Energy Recharge targets (`src/energy`). It measures energy the way gcsim's substat optimizer does (`pkg/optimization/optstats/energy_stats.go`), but per burst and fast enough to update live (gcsim's replay logs are about 50 times slower). It doesn't change anything else in the engine. |
+
 ## How they're used
 
 `scripts/build-gcsim.sh` applies every patch here, in name order, to the pinned gcsim version before

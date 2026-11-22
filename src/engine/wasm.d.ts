@@ -10,6 +10,8 @@ declare class Go {
 
 declare function validateConfig(cfg: string): string;
 declare function sample(cfg: string, seed: string): string;
+/** One fight with bursts that ignore energy; JSON energy per burst (patches/wasm-energy.patch). */
+declare function energyNeeded(cfg: string, seed: string): string;
 declare function initializeWorker(cfg: string): string | null;
 declare function simulate(): Uint8Array | string;
 declare function initializeAggregator(cfg: string): string;

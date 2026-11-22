@@ -55,8 +55,10 @@ describe('gcsim v2.50.0 support', () => {
     expect(unsupported).toEqual(['Kachina', 'Lohen', 'Mitya', 'Valeriy', 'Vesna']);
     const patched = data.characters.filter((c) => c.gcsim_patch).map((c) => `${c.name}: patches/${c.gcsim_patch}.patch`);
     expect(patched).toEqual(['Linnea: patches/linnea.patch', 'Nefer: patches/nefer.patch', 'Vodyanitsa: patches/vodyanitsa.patch']);
-    // Every patch in patches/ belongs to a character or weapon, and every patched one has a patch file.
-    const files = readdirSync('patches').filter((f) => f.endsWith('.patch')).map((f) => f.replace('.patch', ''));
+    // Every patch in patches/ belongs to a character or weapon (apart from the engine additions,
+    // listed in patches/README.md), and every patched one has a patch file.
+    const ENGINE_ADDITIONS = ['wasm-energy'];
+    const files = readdirSync('patches').filter((f) => f.endsWith('.patch')).map((f) => f.replace('.patch', '')).filter((f) => !ENGINE_ADDITIONS.includes(f));
     const owners = [...data.characters, ...data.weapons].filter((x) => x.gcsim_patch).map((x) => x.gcsim_patch);
     expect(files.sort()).toEqual(owners.sort());
     expect(data.weapons.filter((w) => w.gcsim_patch).map((w) => `${w.name}: patches/${w.gcsim_patch}.patch`)).toEqual(['Starsealed Edict: patches/starsealed.patch']);
