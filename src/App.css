@@ -38,7 +38,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .tabs {
-  position: fixed; bottom: 0; left: 0; right: 0; display: flex; overflow-x: auto;
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; display: flex; overflow-x: auto;
   background: var(--surface); border-top: 1px solid #ffffff14;
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -536,3 +536,16 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .info-toggle { padding: 0.2rem 0; }
 .info-panel.open .info-body { border-left: 3px solid var(--accent); background: #5ec8f20d; border-radius: 0 8px 8px 0; padding: 0.4rem 0.75rem 0.6rem; margin-top: 0.3rem; }
 .library-details.compact .details-section:first-child { border-top: 0; margin-top: 0; padding-top: 0.2rem; }
+
+/* Energy Recharge targets (Setup) */
+.energy-levels { margin: 0.4rem 0 0.2rem; }
+.energy-list { list-style: none; padding: 0; margin: 0.6rem 0 0; display: grid; gap: 0.6rem; }
+.energy-list > li { background: #232938; border-radius: 10px; padding: 0.6rem 0.75rem; }
+.energy-list p { margin: 0.2rem 0; }
+.energy-verdict { font-size: 0.85rem; font-weight: 600; margin-left: 0.3rem; }
+.energy-verdict.ok { color: #5ed39a; }
+.energy-verdict.short { color: #ff8f8f; }
+.energy-bar { position: relative; height: 0.6rem; background: #ffffff12; border-radius: 999px; margin: 0.35rem 0; }
+.energy-yours { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 999px; }
+.energy-need { position: absolute; top: -0.25rem; bottom: -0.25rem; width: 3px; margin-left: -1px; background: var(--gold); border-radius: 2px; }
+.energy-every select { width: auto; padding: 0.25rem 0.4rem; font-size: 0.85rem; }

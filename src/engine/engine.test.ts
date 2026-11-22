@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS } from '../config/settings';
 import { loadGameData, type GameData } from '../data/gameData';
 import { DEFAULT_TOKEN_TABLE, parseTokenTable } from '../rotation/tokens';
 import { measureTiming } from '../rotation/timing';
+import { energyTargets, standInRotation, type EnergyFight } from '../energy/energy';
 import { placeholderTeam } from '../team/placeholderTeam.testutil';
 import { getBaseline, snapshotConfig, solveArtifacts, statsFromSnapshot } from '../team/baseline';
 import { interpolateStats } from '../team/level';
@@ -251,6 +252,25 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(built.config).toContain('nahida skill[hold=90]');
     expect(built.config).toContain('nahida skill[hold=300]');
     expect(JSON.parse(sample(built.config!, '1')).error).toBeUndefined();
+  });
+
+  it('works out ER targets from fights where bursts ignore energy, for a written and a stand-in rotation', () => {
+    const fights = (plan: { opener: string; loop: string }) => {
+      const built = buildConfig(placeholderTeam(data), data, plan, table, DEFAULT_SETTINGS, 1);
+      expect(built.problems).toEqual([]);
+      return Array.from({ length: 10 }, (_, i) => {
+        const out = energyNeeded(built.config!, String(i + 1));
+        expect(error(out)).toBeUndefined();
+        return JSON.parse(out) as EnergyFight;
+      });
+    };
+    const written = energyTargets(fights({ opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' }));
+    expect(written.map((c) => c.status)).toEqual(['target', 'no-burst', 'target', 'target']); // Kazuha never bursts here
+    for (const c of written) if (c.status === 'target') expect(c.needed.average).toBeGreaterThan(1), expect(c.needed.average).toBeLessThan(3);
+    // Before a rotation is written: everyone E Q, 20 s per rotation.
+    const rough = energyTargets(fights(standInRotation(['Neuvillette', 'Kazuha', 'Furina', 'Xilonen'])));
+    expect(rough.map((c) => c.status)).toEqual(['target', 'target', 'target', 'target']);
+    for (const c of rough) if (c.status === 'target') expect(c.interval).toBeGreaterThanOrEqual(19.9);
   });
 
   it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {

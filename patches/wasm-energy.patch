@@ -1,0 +1,128 @@
+diff --git a/cmd/wasm/main.go b/cmd/wasm/main.go
+index c0a15fc..ae6f12f 100644
+--- a/cmd/wasm/main.go
++++ b/cmd/wasm/main.go
+@@ -10,7 +10,10 @@ import (
+ 	"syscall/js"
+ 
+ 	"github.com/genshinsim/gcsim/pkg/agg"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
+ 	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
+ 	"github.com/genshinsim/gcsim/pkg/gcs/ast"
+ 	"github.com/genshinsim/gcsim/pkg/gcs/eval"
+ 	"github.com/genshinsim/gcsim/pkg/gcs/parser"
+@@ -41,6 +44,7 @@ func main() {
+ 	// Helper Functions (stateless, no init call needed)
+ 	js.Global().Set("sample", js.FuncOf(doSample))
+ 	js.Global().Set("validateConfig", js.FuncOf(validateConfig))
++	js.Global().Set("energyNeeded", js.FuncOf(energyNeeded))
+ 
+ 	// Worker Functions
+ 	js.Global().Set("initializeWorker", js.FuncOf(initializeWorker))
+@@ -309,3 +313,104 @@ func errorRecover(r interface{}) string {
+ 	}
+ 	return marshal(err)
+ }
++
++// Kairi Calc: energy for Energy Recharge targets (patches/wasm-energy.patch).
++
++// energyWindow is what one character received between two of their bursts: particle energy before
++// Energy Recharge, by source, and flat energy, by source; Cost is what the burst that ends it uses
++// and ER the character's Energy Recharge at that moment.
++type energyWindow struct {
++	Frame int                `json:"frame"`
++	Cost  float64            `json:"cost"`
++	ER    float64            `json:"er"`
++	Raw   map[string]float64 `json:"raw"`
++	Flat  map[string]float64 `json:"flat"`
++}
++
++// energyNeeded(cfg: string, seed: string) -> JSON {"characters":[{"name","bursts":[energyWindow…]}]}
++// Runs one fight in which bursts ignore energy (gcsim's ignore_burst_energy, so the rotation plays
++// as written), the way gcsim's substat optimizer measures how much Energy Recharge each burst needs:
++// (cost - flat energy) / particle energy before ER, for the energy received since the last burst.
++func energyNeeded(this js.Value, args []js.Value) (out interface{}) {
++	defer func() {
++		if r := recover(); r != nil {
++			out = errorRecover(r)
++		}
++	}()
++	file := ast.NewFile()
++	cfg, prog, err := parser.New(file, args[0].String()).Parse()
++	if err != nil {
++		return marshal(err)
++	}
++	cfg.Settings.IgnoreBurstEnergy = true
++	seed, err := strconv.ParseInt(args[1].String(), 10, 64)
++	if err != nil {
++		seed = simulator.CryptoRandSeed()
++	}
++	core, err := simulation.NewCore(seed, false, cfg)
++	if err != nil {
++		return marshal(err)
++	}
++	ev, err := eval.NewEvaluator(file, prog, core)
++	if err != nil {
++		return marshal(err)
++	}
++	sim, err := simulation.New(cfg, ev, core)
++	if err != nil {
++		return marshal(err)
++	}
++
++	chars := core.Player.Chars()
++	fresh := func() energyWindow { return energyWindow{Raw: map[string]float64{}, Flat: map[string]float64{}} }
++	current := make([]energyWindow, len(chars))
++	bursts := make([][]energyWindow, len(chars))
++	for i := range chars {
++		current[i] = fresh()
++		bursts[i] = []energyWindow{}
++	}
++	core.Events.Subscribe(event.OnEnergyChange, func(a ...any) {
++		char := a[0].(*character.CharWrapper)
++		pre := a[1].(float64)
++		amount := a[2].(float64)
++		src := a[3].(string)
++		i := char.Index()
++		if a[4].(bool) {
++			if er := char.Stat(attributes.ER); er > 0 {
++				current[i].Raw[src] += amount / er
++			}
++		} else if amount < 0 {
++			current[i].Flat[src] -= min(-amount, pre)
++		} else {
++			current[i].Flat[src] += amount
++		}
++	}, "kairi-energy-change")
++	core.Events.Subscribe(event.OnEnergyBurst, func(a ...any) {
++		char := a[0].(*character.CharWrapper)
++		i := char.Index()
++		w := current[i]
++		w.Frame = core.F
++		w.ER = char.Stat(attributes.ER)
++		w.Cost = a[2].(float64)
++		bursts[i] = append(bursts[i], w)
++		current[i] = fresh()
++	}, "kairi-energy-burst")
++
++	if _, err := sim.Run(); err != nil {
++		return marshal(err)
++	}
++	type charOut struct {
++		Name   string         `json:"name"`
++		Bursts []energyWindow `json:"bursts"`
++	}
++	res := struct {
++		Characters []charOut `json:"characters"`
++	}{}
++	for i, c := range chars {
++		res.Characters = append(res.Characters, charOut{Name: c.Base.Key.String(), Bursts: bursts[i]})
++	}
++	data, err := json.Marshal(res)
++	if err != nil {
++		return marshal(err)
++	}
++	return string(data)
++}

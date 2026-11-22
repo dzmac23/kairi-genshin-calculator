@@ -253,8 +253,8 @@ export class SimPool {
 let helper: { worker: EngineWorker; ready: Promise<unknown> } | undefined;
 let helperTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** gcsim's stats for the first character of a config at the start of a fight (its snapshot). */
-export async function characterSnapshot(config: string): Promise<number[]> {
+/** Runs a job on the helper engine (started when needed, stopped after a minute unused). */
+async function onHelper(req: Parameters<EngineWorker['call']>[0]) {
   if (!helper) {
     const worker = new EngineWorker();
     const ready = compileEngine().then((module) => worker.call({ type: 'load', module }));
@@ -268,8 +268,7 @@ export async function characterSnapshot(config: string): Promise<number[]> {
   clearTimeout(helperTimer);
   try {
     await h.ready;
-    const reply = await h.worker.call({ type: 'snapshot', config });
-    return reply.snapshot ?? [];
+    return await h.worker.call(req);
   } catch (error) {
     // A failed start can be retried with a fresh engine.
     if (helper === h && !(error instanceof ConfigError)) {
@@ -283,4 +282,14 @@ export async function characterSnapshot(config: string): Promise<number[]> {
       helper = undefined;
     }, 60_000);
   }
+}
+
+/** gcsim's stats for the first character of a config at the start of a fight (its snapshot). */
+export async function characterSnapshot(config: string): Promise<number[]> {
+  return (await onHelper({ type: 'snapshot', config })).snapshot ?? [];
+}
+
+/** One fight per seed with bursts that ignore energy: the energy each burst had (src/energy). */
+export async function energyFights(config: string, seeds: string[]): Promise<string[]> {
+  return (await onHelper({ type: 'energy', config, seeds })).energy ?? [];
 }

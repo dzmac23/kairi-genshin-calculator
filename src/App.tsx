@@ -18,6 +18,7 @@ import type { RotationText } from './rotation/notation';
 import { DEFAULT_TOKEN_TABLE, OLD_DEFAULT_TOKEN_TABLES, parseTokenTable } from './rotation/tokens';
 import CompareScreen, { type Side } from './screens/CompareScreen';
 import RunHistory from './screens/RunHistory';
+import EnergyCard from './energy/EnergyCard';
 import LibraryScreen, { type LibraryItem } from './screens/LibraryScreen';
 import HomeScreen from './screens/HomeScreen';
 import RotationScreen from './screens/RotationScreen';
@@ -411,6 +412,9 @@ export default function App() {
                 />
               }
             />
+            {data && (
+              <EnergyCard team={team} data={data} table={parsedTable} settings={cleanSettings(settings)} rotationConfig={built?.config} />
+            )}
             <RotationScreen
               rotation={rotation}
               onRotationChange={setRotation}
