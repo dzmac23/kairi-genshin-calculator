@@ -1,5 +1,5 @@
 // The Library's text (data/library.json, made by scripts/export_library_text.mjs): talents,
-// passives, constellations and weapon descriptions, plus a compact copy of the talent scaling.
+// passives, constellations and weapon descriptions, plus each talent's scaling as the game stores it.
 // It's about a megabyte, so it loads only when the Library or an ⓘ panel opens.
 
 import { useEffect, useState } from 'react';
@@ -16,14 +16,17 @@ export type CharacterText = {
   passives: PassiveText[];
   constellations: ConstellationText[];
 };
-/** One line of a talent's scaling: its label, the game's text at level 10, and values for levels 1–15. */
-export type ScalingRow = { label: string; at10: string; values: (number | null)[][] };
+/**
+ * A talent's scaling as the game stores it: lines such as "1-Hit DMG|{param1:F1P}" and the values
+ * each param takes at talent levels 1–15 (a single value when it never changes).
+ */
+export type TalentScaling = { lines: string[]; params: Record<string, number[]> };
 
 export type Library = {
   characters: Record<string, CharacterText>;
   weapons: Record<string, { description: string }>;
-  /** Character name -> talent ("Normal Attack", "Skill", "Burst", "Special") -> rows. */
-  scaling: Record<string, Record<string, ScalingRow[]>>;
+  /** Character name -> talent ("Normal Attack", "Skill", "Burst", "Special") -> scaling. */
+  scaling: Record<string, Record<string, TalentScaling>>;
   /** Every artifact set, including the low-rarity ones gcsim can't simulate. */
   sets: ArtifactSet[];
 };
@@ -60,36 +63,32 @@ export const SCALING_GROUP: Record<string, string> = {
   'Elemental Burst': 'Burst',
 };
 
+/** One value in a scaling line, in the game's format: F1P = percent with 1 decimal, I = whole number… */
+export function formatParam(value: number, format: string): string {
+  if (format === 'I') return String(Math.round(value));
+  const percent = format.includes('P');
+  const v = percent ? value * 100 : value;
+  const decimals = format.match(/F(\d)/)?.[1];
+  // A plain "P" has no fixed decimals: up to two, without the computer's rounding noise.
+  const text = decimals !== undefined ? v.toFixed(Number(decimals)) : String(Number(v.toFixed(2)));
+  return percent ? `${text}%` : text;
+}
+
 /**
- * A scaling row at a talent level (1–15), written like the game writes it at level 10: each number
- * in the level-10 text becomes the same value at the chosen level. A number that is one of the
- * row's values is replaced by it; other percentages (parts of a multi-hit "67.6%+67.6%", or the
- * low and high plunge) grow by the same curve as the row, so they are scaled by its ratio. Small
- * whole numbers such as "×2" stay as they are. `exact` is false when a number that may change with
- * the level couldn't be worked out (then it shows its level-10 value).
+ * A talent's scaling lines at a talent level (1–15), written as the game writes them:
+ * { label: "1-Hit DMG", value: "72.2%" }.
  */
-export function scalingAt(row: ScalingRow, level: number): { text: string; exact: boolean } {
+export function scalingLines(scaling: TalentScaling, level: number): { label: string; value: string }[] {
   const i = Math.min(15, Math.max(1, level)) - 1;
-  if (i === 9) return { text: row.at10, exact: true };
-  const candidates = row.values.map((a) => ({ at10: a[9], now: a[i] })).filter((c) => c.at10 !== null && c.now !== null) as { at10: number; now: number }[];
-  const main = candidates.find((c) => c.at10 !== 0);
-  const ratio = main ? main.now / main.at10 : 1;
-  const changes = candidates.some((c) => c.at10 !== c.now);
-  let exact = true;
-  const text = row.at10.replace(/([×*]?)(\d+(?:\.\d+)?)(%?)/g, (token, times: string, digits: string, percent: string) => {
-    const n = parseFloat(digits);
-    const decimals = digits.split('.')[1]?.length ?? 0;
-    const tolerance = 0.6 * 10 ** -decimals;
-    for (const c of candidates) {
-      if (percent && Math.abs(c.at10 * 100 - n) <= tolerance) return `${times}${(c.now * 100).toFixed(decimals)}%`;
-      if (!percent && Math.abs(c.at10 - n) <= tolerance) return `${times}${c.now.toFixed(decimals)}`;
-    }
-    if (!changes || times) return token; // "×2": a hit count
-    if (percent) return `${(n * ratio).toFixed(decimals)}%`;
-    exact = false;
-    return token;
+  return scaling.lines.map((line) => {
+    const [label, template = ''] = line.split('|');
+    const value = template.replace(/\{(param\d+):([A-Z0-9]+)\}/g, (all, param: string, format: string) => {
+      const values = scaling.params[param];
+      if (!values?.length) return all;
+      return formatParam(values[Math.min(i, values.length - 1)], format);
+    });
+    return { label, value };
   });
-  return { text, exact };
 }
 
 /** A weapon's passive with a refinement's values filled in ("CRIT DMG increased by 20%…"). */

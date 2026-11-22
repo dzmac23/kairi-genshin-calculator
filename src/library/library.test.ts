@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameData, type GameData } from '../data/gameData';
-import { loadLibrary, refinedPassive, scalingAt, type Library } from './library';
+import { formatParam, loadLibrary, refinedPassive, scalingLines, type Library } from './library';
 
 let lib: Library;
 let data: GameData;
@@ -20,13 +20,24 @@ describe('the Library', () => {
     expect(lib.characters.Lauma.passives.map((p) => p.unlock)).toEqual(['Ascension 1', 'Ascension 4', 'Always', 'Always']);
   });
 
-  it('writes talent scaling at any level the way the game does', () => {
-    const row = lib.scaling.Furina.Skill.find((r) => r.label === 'Ousia Bubble DMG')!;
-    expect(scalingAt(row, 10)).toEqual({ text: '14.2% Max HP', exact: true });
-    expect(scalingAt(row, 1).text).toBe('7.9% Max HP');
-    expect(scalingAt(row, 13).text).toBe('16.7% Max HP'); // 0.16711 in the game data
-    const duration = lib.scaling.Furina.Skill.find((r) => r.label === 'Duration')!;
-    expect(scalingAt(duration, 1).text).toBe('30s');
+  it('writes talent scaling at any level exactly as the game does', () => {
+    const at = (name: string, group: string, level: number) => Object.fromEntries(scalingLines(lib.scaling[name][group], level).map((l) => [l.label, l.value]));
+    expect(at('Furina', 'Skill', 10)['Ousia Bubble DMG']).toBe('14.2% Max HP');
+    expect(at('Furina', 'Skill', 1)['Ousia Bubble DMG']).toBe('7.9% Max HP');
+    expect(at('Furina', 'Skill', 13)['Ousia Bubble DMG']).toBe('16.7% Max HP');
+    // Jean's burst healing has a flat part that grows with the level too.
+    expect(at('Jean', 'Burst', 1)['Continuous Regeneration']).toBe('25.12% ATK+154/s');
+    expect(at('Jean', 'Burst', 10)['Continuous Regeneration']).toBe('45.22% ATK+339/s');
+    // Hit counts stay as the game writes them.
+    expect(at('Alhaitham', 'Skill', 1)['2-Mirror Projection Attack DMG']).toMatch(/×2$/);
+    expect(at('Xiangling', 'Normal Attack', 1)['4-Hit DMG']).toMatch(/\*4$/);
+  });
+
+  it('formats values the way the game does', () => {
+    expect(formatParam(4.248, 'P')).toBe('424.8%');
+    expect(formatParam(0.25118, 'F2P')).toBe('25.12%');
+    expect(formatParam(188.3, 'I')).toBe('188');
+    expect(formatParam(15, 'F1')).toBe('15.0');
   });
 
   it("fills a weapon's passive with the refinement's values", () => {
@@ -36,11 +47,3 @@ describe('the Library', () => {
   });
 });
 
-describe('talent scaling with several parts', () => {
-  it('scales every part of a multi-hit by the row\'s curve and keeps hit counts', () => {
-    const row = { label: '3-Hit DMG', at10: '67.6%+67.6%', values: [[0.7, 0.75, 0.8, 0.88, 0.94, 1.0, 1.1, 1.2, 1.25, 1.3512, 1.45, 1.55, 1.65, 1.75, 1.85]] };
-    expect(scalingAt(row, 1)).toEqual({ text: '35.0%+35.0%', exact: true });
-    const twice = { label: '3-Hit DMG', at10: '97.3%×2', values: [[0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0.97288, 0, 0, 0, 0, 0]] };
-    expect(scalingAt(twice, 1).text).toBe('50.0%×2');
-  });
-});

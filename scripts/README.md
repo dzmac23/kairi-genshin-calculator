@@ -14,7 +14,7 @@ These scripts produced the files in `data/`. They were written as one-off tools 
 
 ## Library text
 
-`export_library_text.mjs` writes `data/library.json` for the Library and the Setup screen's ⓘ panels: every character's talent, passive and constellation text (game highlights kept as `**bold**`), weapon descriptions, and a compact copy of the talent scaling from `data/talents.json` (so the Library can show any talent level without loading the full file). Run it from the repository root after `npm install --no-save genshin-db@5.2.15`, and again when characters or weapons are added to `data/`.
+`export_library_text.mjs` writes `data/library.json` for the Library and the Setup screen's ⓘ panels: every character's talent, passive and constellation text (game highlights kept as `**bold**`), weapon descriptions, and each talent's scaling as the game stores it (each line's template and its values for talent levels 1–15), so the Library shows every line exactly as the game does at any level. Run it from the repository root after `npm install --no-save genshin-db@5.2.15`, and again when characters or weapons are added to `data/`.
 
 ## Known parser weaknesses
 

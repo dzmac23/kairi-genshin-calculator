@@ -6,7 +6,7 @@ import { useState } from 'react';
 import RichText from '../components/RichText';
 import type { ArtifactSet, Character, GameData, Weapon } from '../data/gameData';
 import { interpolateStats } from '../team/level';
-import { refinedPassive, scalingAt, SCALING_GROUP, type Library } from './library';
+import { refinedPassive, scalingLines, SCALING_GROUP, type Library } from './library';
 
 const stars = (n: number) => '★'.repeat(n);
 /** A stat value as the game shows it: Elemental Mastery flat, everything else as a percentage. */
@@ -116,7 +116,8 @@ export function CharacterDetails({
               </label>
             </div>
             {text.talents.map((t) => {
-              const rows = scaling[SCALING_GROUP[t.kind]] ?? [];
+              const group = scaling[SCALING_GROUP[t.kind]];
+              const rows = group ? scalingLines(group, talentLevel) : [];
               return (
                 <details key={t.kind} className="talent">
                   <summary>
@@ -127,18 +128,12 @@ export function CharacterDetails({
                     <table className="table scaling">
                       <caption className="muted small">At talent level {talentLevel}</caption>
                       <tbody>
-                        {rows.map((r, i) => {
-                          const v = scalingAt(r, talentLevel);
-                          return (
-                            <tr key={i}>
-                              <td>{r.label}</td>
-                              <td className="num">
-                                {v.text}
-                                {!v.exact && <span className="muted small"> (at level 10)</span>}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {rows.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.label}</td>
+                            <td className="num">{r.value}</td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   )}
