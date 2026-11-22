@@ -10,6 +10,7 @@ import type { RunRecord } from '../history/model';
 import { characterName, summarize, type GcsimResult, type ResultsView } from '../results/summarize';
 import { formatLevel } from '../team/level';
 import { ARTIFACT_STATS, TOTAL_STATS, type Slot } from '../team/model';
+import { rotationBoxes, rotationName } from '../rotation/notation';
 
 /** Scenario A compared with Scenario B. */
 export type Verdict = 'a-better' | 'a-worse' | 'too-close';
@@ -202,8 +203,13 @@ export function inputChanges(a: RunRecord, b: RunRecord): string[] {
     }
   }
   if (a.rotation && b.rotation) {
-    if (a.rotation.opener.trim() !== b.rotation.opener.trim()) out.push(`Opener: "${a.rotation.opener.trim() || '(none)'}" → "${b.rotation.opener.trim() || '(none)'}"`);
-    if (a.rotation.loop.trim() !== b.rotation.loop.trim()) out.push(`Loop: "${a.rotation.loop.trim()}" → "${b.rotation.loop.trim()}"`);
+    if (a.rotation.opener.trim() !== b.rotation.opener.trim()) out.push(`Start of fight: "${a.rotation.opener.trim() || '(none)'}" → "${b.rotation.opener.trim() || '(none)'}"`);
+    const [ra, rb] = [rotationBoxes(a.rotation), rotationBoxes(b.rotation)];
+    const several = ra.length > 1 || rb.length > 1;
+    for (let i = 0; i < Math.max(ra.length, rb.length); i++) {
+      const [x, y] = [(ra[i] ?? '').trim(), (rb[i] ?? '').trim()];
+      if (x !== y) out.push(`${several ? rotationName(i) : 'Rotation'}: "${x || '(none)'}" → "${y || '(none)'}"`);
+    }
   }
   if (!(a.team && b.team && a.rotation && b.rotation) && a.config !== b.config) out.push(...configChanges(a.config, b.config));
   const ia = (a.result as Settings).simulator_settings?.iterations;

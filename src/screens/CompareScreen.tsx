@@ -250,9 +250,9 @@ function ComparisonView({ c, a, b }: { c: Comparison; a: RunRecord; b: RunRecord
             </thead>
             <tbody>
               {[
-                ['Loop length', c.timing.loopA, c.timing.loopB, secs, true],
-                ['Loops in the fight', c.timing.loopsA, c.timing.loopsB, (n: number) => n.toFixed(1), false],
-                ['Opener length', c.timing.openerA, c.timing.openerB, secs, true],
+                ['Rotation length (one cycle)', c.timing.loopA, c.timing.loopB, secs, true],
+                ['Rotations in the fight', c.timing.loopsA, c.timing.loopsB, (n: number) => n.toFixed(1), false],
+                ['Start of fight', c.timing.openerA, c.timing.openerB, secs, true],
               ]
                 .filter(([, x, y]) => x !== undefined || y !== undefined)
                 .map(([label, x, y, f, lower]) => {

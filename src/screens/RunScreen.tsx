@@ -3,6 +3,8 @@ import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
 import { ENEMY_ELEMENTS, elementName, enemySummary, resistPercent, type Enemy } from '../data/gameData';
 import type { BuildResult } from '../config/build';
+import type { Check } from '../rotation/checks';
+import { turnLabel } from '../rotation/notation';
 import { MAX_ENEMIES, parseHp, type SimSettings } from '../config/settings';
 import { setIterations } from '../engine/config';
 import { workerCount } from '../engine/pool';
@@ -295,6 +297,10 @@ function EnemyChoice({ settings, enemies, onChange }: { settings: SimSettings; e
 }
 
 function TeamSource({ built, onGoToSetup }: { built?: BuildResult; onGoToSetup: () => void }) {
+  const checkLabel = (c: Check) => {
+    const turn = built?.translation.turns.find((t) => t.section === c.section && t.index === c.index);
+    return turn ? turnLabel(turn, built!.translation.rotations) : `Turn ${c.index}`;
+  };
   if (!built) return <p className="muted">Loading game data…</p>;
   const turns = built.translation.turns.length;
   return (
@@ -334,7 +340,7 @@ function TeamSource({ built, onGoToSetup }: { built?: BuildResult; onGoToSetup: 
           <ul className="small">
             {built.checks.map((c) => (
               <li key={`${c.section}${c.index}${c.message}`} className={`check-${c.level}`}>
-                {c.section === 'opener' ? 'Opener' : 'Loop'} turn {c.index}: {c.message}
+                {checkLabel(c)}: {c.message}
               </li>
             ))}
           </ul>

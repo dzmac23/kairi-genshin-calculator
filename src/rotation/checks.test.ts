@@ -61,13 +61,14 @@ describe('special characters', () => {
     expect(check('Skirk hE tE N5 C', team)).toEqual([]); // hold skill doesn't enter Flash
   });
 
-  it('Kinich: cannon without L stops, L fixes it, a held cannon gets a tip, no Charged Attack while grappling', () => {
+  it('Kinich: exact Loop Shots or Fill are both fine, a held cannon gets a tip, no Charged Attack while grappling', () => {
     const team = ['Kinich', 'Bennett', 'Furina', 'Kaedehara Kazuha'];
-    expect(levels(check('Kinich E N3 E', team))).toEqual(['stop']);
-    expect(check('Kinich E L E', team)).toEqual([]);
-    expect(levels(check('Kinich E L hE', team))).toEqual(['tip']);
+    expect(check('Kinich E N3 E', team)).toEqual([]); // the app tops the bar up if needed
+    expect(check('Kinich E Fill E', team)).toEqual([]);
+    expect(check('Kinich e fill e', team)).toEqual([]); // case doesn't matter
+    expect(levels(check('Kinich E Fill hE', team))).toEqual(['tip']);
     expect(levels(check('Kinich E C', team))).toEqual(['stop']);
-    expect(levels(check('Kinich L N3', team))).toEqual(['tip']);
+    expect(levels(check('Kinich Fill N3', team))).toEqual(['tip']);
   });
 
   it('Mualani: a bite without M is weak, M fixes it (twice in a row too), no Charged Attack while surfing', () => {
@@ -119,18 +120,44 @@ describe('shorthand: options and statement codes', () => {
     expect(turn('Fischl E(recast=1)', ['Fischl']).statements).toEqual(['fischl skill[recast=1];']);
     expect(turn('Raiden N(5)', ['Raiden Shogun']).error).toMatch(/lone number only works on a code with one option/);
   });
-  it('turns L and M into guarded gcsim loops, and the short holds into short_hold', () => {
-    expect(turn('Kinich E L E', ['Kinich']).statements).toEqual([
-      'kinich skill;',
-      'while .kinich.nightsoul.state && .kinich.nightsoul.points < 20 { kinich attack; }',
-      'kinich skill;',
-    ]);
-    expect(turn('Mualani E M N', ['Mualani']).statements?.[1]).toBe('while .mualani.nightsoul.state && .mualani.momentum < 3 { mualani walk; }');
-    expect(turn('Kinich L2', ['Kinich']).error).toMatch(/already repeats until it's done/);
+  it('turns Fill (and the older L and M) into guarded gcsim loops, and the short holds into short_hold', () => {
+    const fill = 'while .kinich.nightsoul.state && .kinich.nightsoul.points < 20 { kinich attack; }';
+    // Before each skill, the automatic top-up (it does nothing when entering the grapple or on a full bar).
+    // Before each skill that may fire the cannon, the automatic top-up; not before the E that starts the
+    // grapple (he swapped in) and not right after Fill.
+    expect(turn('Kinich E Fill E > Bennett E', ['Kinich', 'Bennett']).statements).toEqual(['kinich skill;', fill, 'kinich skill;']);
+    expect(turn('Kinich E N4 E > Bennett E', ['Kinich', 'Bennett'])).toMatchObject({ statements: ['kinich skill, attack:4;', fill, 'kinich skill;'], topUps: [1] });
+    // Two turns in a row: the second one's first E may fire the cannon, so it keeps its top-up.
+    expect(
+      translateRotation({ opener: '', loop: 'Kinich E N2 > Kinich N2 E' }, [{ name: 'Kinich', key: 'kinich' }], table).turns[1].statements,
+    ).toEqual(['kinich attack:2;', fill, 'kinich skill;']);
+    expect(turn('Kinich E L E', ['Kinich']).statements).toEqual(turn('Kinich E Fill E', ['Kinich']).statements);
+    expect(turn('Zibai E N3 E > Bennett E', ['Zibai', 'Bennett']).statements?.[1]).toBe('while .zibai.radiance > 0 && .zibai.radiance < 70 { zibai attack; }');
+    expect(turn('Mualani E Fill N', ['Mualani']).statements?.[1]).toBe('while .mualani.nightsoul.state && .mualani.momentum < 3 { mualani walk; }');
+    expect(turn('Mualani E M N', ['Mualani']).statements).toEqual(turn('Mualani E Fill N', ['Mualani']).statements);
+    expect(turn('Kinich Fill2', ['Kinich']).error).toMatch(/already repeats until it's done/);
     expect(turn('Kirara sE', ['Kirara']).statements).toEqual(['kirara skill[short_hold=1];']);
     expect(turn('Neuvillette sC', ['Neuvillette']).statements).toEqual(['neuvillette charge[short=1];']);
     // Codes for one character don't exist for others.
     expect(turn('Bennett sE', ['Bennett']).error).toMatch(/not in the shorthand table/);
     expect(turn('Bennett L', ['Bennett']).error).toMatch(/not in the shorthand table/);
+  });
+  it('reads hold words and hold times: tE sE hE fE, hE(1.5s); upper and lower case are the same', () => {
+    expect(turn('Nahida hE(1.5s)', ['Nahida']).statements).toEqual(['nahida skill[hold=90];']);
+    expect(turn('nahida fe', ['Nahida']).statements).toEqual(['nahida skill[hold=300];']);
+    expect(turn('Bennett fE', ['Bennett']).statements).toEqual(['bennett skill[hold=2];']);
+    expect(turn('Kazuha fE', ['Kaedehara Kazuha']).statements).toEqual(['kaedeharakazuha skill[hold=1];']);
+    expect(turn('Nefer hC(1s)', ['Nefer']).statements).toEqual(['nefer charge[hold=60];']);
+    expect(turn('Bennett hE(1s)', ['Bennett']).error).toMatch(/levels, not a length: write hE for level 1 or fE for level 2/);
+    expect(turn('Kazuha hE(1s)', ['Kaedehara Kazuha']).error).toMatch(/only one length/);
+    expect(turn('Nahida hE(9s)', ['Nahida']).error).toMatch(/longest hold gcsim allows here is 5 s/);
+    expect(turn('Raiden e q n5 n2c d j w aim', ['Raiden Shogun']).statements).toEqual(['raidenshogun skill, burst, attack:5, attack:2, charge, dash, jump, walk, aim;']);
+  });
+  it('reads "/" as otherwise, with any moves after it', () => {
+    expect(turn('Bennett Q/N3', ['Bennett']).statements).toEqual(['if .bennett.burst.ready { bennett burst; } else { bennett attack:3; }']);
+    expect(turn('Bennett Q/E/N3', ['Bennett']).statements).toEqual([
+      'if .bennett.burst.ready { bennett burst; } else { if .bennett.skill.ready { bennett skill; } else { bennett attack:3; } }',
+    ]);
+    expect(turn('Bennett Q?/E', ['Bennett']).statements).toEqual(turn('Bennett Q/E', ['Bennett']).statements);
   });
 });

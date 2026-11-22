@@ -463,3 +463,8 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .badge.check-tip { background: #5ec8f21f; color: var(--accent); }
 .run-checks ul { margin: 0.25rem 0 0.4rem; padding-left: 1.1rem; }
 .status .explain { margin-top: 0.5rem; color: var(--text); }
+
+/* Rotation boxes: Start of fight (folded) and Rotations A, B… */
+.rotation-box-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.opener-box > summary { cursor: pointer; }
+.notation-help details { margin-top: 0.5rem; }

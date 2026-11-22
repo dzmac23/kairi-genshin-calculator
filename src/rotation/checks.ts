@@ -95,6 +95,9 @@ type Ctx = {
   hasXianyun: boolean;
 };
 
+/** Fill (or its older names L and M): a whole gcsim loop that fills the bar. */
+const isFill = (move: Move) => move.action === 'statement' && /^(fill|l|m)$/i.test(move.code);
+
 function applyMove(ctx: Ctx, state: State, move: Move) {
   const { name, key } = ctx;
   const add = (level: CheckLevel, message: string) => {
@@ -171,15 +174,15 @@ function applyMove(ctx: Ctx, state: State, move: Move) {
     case 'kinich':
       if (isSkill) {
         if (flag('grapple') === true) {
-          if (!move.conditional && flag('full') === false) add('stop', `This E fires Kinich's cannon, which needs a full 20-point bar; unless the bar is already full, gcsim stops the run. Put L before it (E L E).`);
+          // A bar that isn't full yet is topped up with Loop Shots automatically (see notation.ts).
           if (held && !move.conditional) add('tip', `Fire Kinich's cannon with a plain E: gcsim makes a held cannon 18 frames faster than it really is.`);
           set('full', false);
         } else {
           set('grapple', true);
           set('full', false);
         }
-      } else if (a === 'statement' && move.code === 'L') {
-        if (flag('grapple') === false) add('tip', `L only works while Kinich is grappling (after his E); here it does nothing.`);
+      } else if (isFill(move)) {
+        if (flag('grapple') === false) add('tip', `Fill only works while Kinich is grappling (after his E); here it does nothing.`);
         set('full', true);
       } else if ((a === 'charge' || PLUNGES.has(a)) && flag('grapple') === true && !move.conditional) {
         add('stop', `No Charged Attack or plunge while Kinich is grappling: gcsim stops the run.`);
@@ -190,11 +193,11 @@ function applyMove(ctx: Ctx, state: State, move: Move) {
         const surfing = flag('surf');
         set('surf', surfing === true ? false : true);
         set('stacks', false);
-      } else if (a === 'statement' && move.code === 'M') {
-        if (flag('surf') === false) add('tip', `M only works while Mualani is surfing (after her E); here it does nothing.`);
+      } else if (isFill(move)) {
+        if (flag('surf') === false) add('tip', `Fill only works while Mualani is surfing (after her E); here it does nothing.`);
         set('stacks', true);
       } else if (a === 'attack' && flag('surf') === true) {
-        if (flag('stacks') === false && !move.conditional) add('tip', `This bite has fewer than 3 stacks (a weak bite). Put M before it to surf until 3 stacks for the Surging Bite (E M N).`);
+        if (flag('stacks') === false && !move.conditional) add('tip', `This bite has fewer than 3 stacks (a weak bite). Put Fill before it to surf until 3 stacks for the Surging Bite (E Fill N).`);
         set('stacks', false);
       } else if (a === 'charge' && flag('surf') === true && !move.conditional) {
         add('stop', `No Charged Attack while Mualani is surfing: gcsim stops the run.`);

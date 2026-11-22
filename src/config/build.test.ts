@@ -108,10 +108,10 @@ describe('buildConfig (Phase 1 acceptance check)', () => {
   });
 
   it('blocks a run and explains why when the rotation is empty or wrong', () => {
-    expect(buildConfig(team, data, loop(''), table, DEFAULT_SETTINGS, 100).problems[0]).toMatch(/type a Loop/);
-    const typo = buildConfig(team, data, loop('Furina tE Qq'), table, DEFAULT_SETTINGS, 100);
+    expect(buildConfig(team, data, loop(''), table, DEFAULT_SETTINGS, 100).problems[0]).toMatch(/type a Rotation/);
+    const typo = buildConfig(team, data, loop('Furina tE Qz'), table, DEFAULT_SETTINGS, 100);
     expect(typo.config).toBeUndefined();
-    expect(typo.problems[0]).toMatch(/"Qq" is not in the shorthand table: it doesn't know "q"/);
+    expect(typo.problems[0]).toMatch(/"Qz" is not in the shorthand table: it doesn't know "z"/);
     const stranger = buildConfig(team, data, loop('Bennett E Q'), table, DEFAULT_SETTINGS, 100);
     expect(stranger.problems[0]).toMatch(/"Bennett" is not a character in your team/);
   });
@@ -168,7 +168,7 @@ describe('rotation notation', () => {
   it('reports badly written table lines', () => {
     const bad = parseTokenTable('E = skill\nthis is wrong\nX = two words');
     expect(bad.errors.map((e) => e.line)).toEqual([2, 3]);
-    expect(bad.general.get('E')).toBe('skill');
+    expect(bad.general.get('e')).toBe('skill'); // codes are stored in lower case
   });
 });
 
@@ -245,12 +245,13 @@ describe('opener, if ready, every N loops, otherwise', () => {
       ['if kc_loop >= 2 { mitya burst; }'],
     ]);
     expect(t.counters).toEqual({ loop: true, cycles: [2, 3] });
-    expect(translateRotation({ opener: 'Odette Q@1/2', loop: 'Odette E' }, mityaTeam, table).turns[0].error).toMatch(/only works in the Loop/);
+    expect(translateRotation({ opener: 'Odette Q@1/2', loop: 'Odette E' }, mityaTeam, table).turns[0].error).toMatch(/only works in a repeating rotation/);
   });
 
-  it('explains misuse of ? and |', () => {
-    expect(translateRotation(loop('Odette N3?'), mityaTeam, table).turns[0].error).toMatch(/single skill or burst/);
-    expect(translateRotation(loop('Odette Q|E'), mityaTeam, table).turns[0].error).toMatch(/always happens/);
+  it('explains misuse of ? and /', () => {
+    expect(translateRotation(loop('Odette N3?'), mityaTeam, table).turns[0].error).toMatch(/works on a skill or burst/);
+    expect(translateRotation(loop('Odette N3/E'), mityaTeam, table).turns[0].error).toMatch(/can always be done/);
+    expect(translateRotation(loop('Odette Q|E'), mityaTeam, table).turns[0].statements).toEqual(['if .odette.burst.ready { odette burst; } else { odette skill; }']);
     expect(translateRotation(loop('Odette Q@3/2'), mityaTeam, table).turns[0].error).toMatch(/needs 1/);
   });
 
