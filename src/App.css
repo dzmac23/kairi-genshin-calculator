@@ -494,3 +494,39 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
   .run-history-title { display: block; }
   .run-history-body { display: block; margin-top: 0; }
 }
+
+/* Library */
+.library-kinds { margin-bottom: 0.75rem; }
+.library-filters { display: grid; gap: 0.4rem; margin: 0.6rem 0; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip.selected { background: #1e3346; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.library-grid { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.library-item { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; text-align: left; background: #232938; color: var(--text); border-radius: 10px; padding: 0.6rem 0.75rem; }
+.library-item:hover { background: #2a3142; }
+.library-item-effect { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rarity { color: var(--gold); letter-spacing: -0.05em; }
+.badge.warn-badge { background: #f28b5e22; color: var(--warn); }
+.back-link { display: inline-block; margin: 0.75rem 0 0; }
+.library-details h2 { margin-bottom: 0.2rem; }
+.details-head p { margin: 0.15rem 0; }
+.details-title { font-style: italic; }
+.details-section { border-top: 1px solid #ffffff12; margin-top: 0.9rem; padding-top: 0.6rem; }
+.details-section h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.details-section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+.details-section-head h3 { margin: 0; }
+.inline-select select { width: auto; min-width: 5.5rem; padding: 0.3rem 0.5rem; }
+.stats.compact { margin: 0.3rem 0; }
+.rich-text p { margin: 0.35rem 0; line-height: 1.5; }
+.rich-text strong { color: #f2d48a; font-weight: 600; }
+.talent { background: #232938; border-radius: 10px; padding: 0.5rem 0.75rem; margin: 0.4rem 0; }
+.talent summary { cursor: pointer; }
+.table.scaling { margin-top: 0.5rem; }
+.table.scaling caption { text-align: left; padding-bottom: 0.2rem; }
+.passive, .constellation { margin: 0.6rem 0; }
+.passive p, .constellation p { margin: 0.2rem 0; }
+.cons-badge { font-weight: 700; }
+.constellation.locked, .details-section.locked { opacity: 0.55; }
+.constellation.unlocked .cons-badge { background: #5ec8f22e; color: var(--accent); }
+.segmented.refine button { min-width: 2.6rem; padding: 0.3rem 0.5rem; }
+.library-filter-fold { margin-top: 0.5rem; }
+.library-filter-fold summary { cursor: pointer; color: var(--accent); }

@@ -18,6 +18,7 @@ import type { RotationText } from './rotation/notation';
 import { DEFAULT_TOKEN_TABLE, OLD_DEFAULT_TOKEN_TABLES, parseTokenTable } from './rotation/tokens';
 import CompareScreen, { type Side } from './screens/CompareScreen';
 import RunHistory from './screens/RunHistory';
+import LibraryScreen, { type LibraryItem } from './screens/LibraryScreen';
 import HomeScreen from './screens/HomeScreen';
 import RotationScreen from './screens/RotationScreen';
 import ResultsScreen from './screens/ResultsScreen';
@@ -29,7 +30,7 @@ import { useTeam } from './team/useTeam';
 import { usePersistentState } from './usePersistentState';
 import { useSimulation, type FinishedRun } from './useSimulation';
 
-const screens = ['Home', 'Setup', 'Run', 'Results'] as const;
+const screens = ['Home', 'Setup', 'Run', 'Results', 'Library'] as const;
 type Screen = (typeof screens)[number];
 
 /** A saved run as the Results screen shows it. */
@@ -310,6 +311,8 @@ export default function App() {
   const shownRecord = shownRun ? history.runs.find((r) => r.id === shownRun.id) : undefined;
 
   const [runMessage, setRunMessage] = useState('');
+  // The Library item being read (kept while switching tabs).
+  const [libraryItem, setLibraryItem] = useState<LibraryItem | undefined>();
   const deleteRuns = (ids: string[]) => {
     history.remove(ids);
     if (viewedRunId && ids.includes(viewedRunId)) setViewedRunId(undefined);
@@ -560,6 +563,15 @@ export default function App() {
               {runMessage && <p className="small muted">{runMessage}</p>}
             </div>
           </div>
+        )}
+        {screen === 'Library' && (
+          <LibraryScreen
+            open={libraryItem}
+            onOpen={(item) => {
+              setLibraryItem(item);
+              window.scrollTo({ top: 0 });
+            }}
+          />
         )}
         </ErrorBoundary>
       </main>

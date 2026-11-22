@@ -12,6 +12,10 @@ These scripts produced the files in `data/`. They were written as one-off tools 
 6. `final_lib.py` merges auto rows, manual rows and talent buffs, maps every C3/C5 constellation to the talent it boosts, and writes `lib_final.json` (published as `data/buffs.json`).
 7. `keymap.py` maps names to gcsim keys using gcsim's `pkg/shortcut/*.dm.go` alias tables (gcsim source must be downloaded first). Published as `data/gcsim_keys.json`.
 
+## Library text
+
+`export_library_text.mjs` writes `data/library.json` for the Library and the Setup screen's ⓘ panels: every character's talent, passive and constellation text (game highlights kept as `**bold**`), weapon descriptions, and a compact copy of the talent scaling from `data/talents.json` (so the Library can show any talent level without loading the full file). Run it from the repository root after `npm install --no-save genshin-db@5.2.15`, and again when characters or weapons are added to `data/`.
+
 ## Known parser weaknesses
 
 Spot checks put auto-parsed buffs at roughly three quarters fully correct. Typical errors are a wrong attack-type filter, a wrong target (a condition clause read as the recipient), and unusual phrasing such as "per 1,000 ATK", "increased to X%" or "the aforementioned bonus". Rows with unusual phrasing are tagged `Check`. Extra damage instances ("deals DMG equal to X% of ATK") are deliberately excluded because they are hits, not buffs. Lunar reaction wording is excluded.
