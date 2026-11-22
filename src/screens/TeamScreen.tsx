@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { NumberField, Segmented } from '../components/Fields';
 import Picker, { type PickerOption } from '../components/Picker';
+import { CharacterDetails, SetDetails, WeaponDetails } from '../library/Details';
+import InfoPanel from '../library/InfoPanel';
+import type { LibraryItem } from '../library/library';
 import { useGameData, type GameData } from '../data/gameData';
 import { canChooseAscension, levelCap, levelKey, MAX_ASCENSION, parseLevel } from '../team/level';
 import { checkTeam, teamToGcsim } from '../team/gcsim';
@@ -32,11 +35,13 @@ type Props = {
   clearNeedsConfirm: boolean;
   /** Saved-team controls shown at the top of the Team section. */
   saveBar?: ReactNode;
+  /** Opens a character, weapon or set in the Library tab (from an ⓘ panel). */
+  onOpenLibrary?: (item: LibraryItem) => void;
 };
 
 const TALENT_NAMES = ['Normal Attack', 'Elemental Skill', 'Elemental Burst'];
 
-export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm, saveBar, baselineErrors = {} }: Props) {
+export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm, saveBar, onOpenLibrary, baselineErrors = {} }: Props) {
   const data = useGameData();
   const [active, setActive] = useState(0);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -107,11 +112,19 @@ export default function TeamScreen({ team, onChange, onClear, clearNeedsConfirm,
         onChange={(s) => updateSlot(active, s)}
         onPatch={(change) => patchSlot(active, change)}
         baselineError={baselineErrors[baselineKey(team[active])]}
+        onOpenLibrary={onOpenLibrary}
       />
 
       <TeamSummary team={team} data={data} problems={problems} />
     </>
   );
+}
+
+/** The ⓘ panel for a chosen artifact set: its effects, with the ones that apply highlighted. */
+function SetInfo({ name, pieces, data, onOpenLibrary }: { name: string; pieces: 2 | 4; data: GameData; onOpenLibrary?: (item: LibraryItem) => void }) {
+  const set = data.set.get(name);
+  if (!set) return null;
+  return <InfoPanel key={name} item={{ kind: 'sets', name }} onOpenLibrary={onOpenLibrary} render={() => <SetDetails set={set} compact build={{ pieces }} />} />;
 }
 
 function SlotEditor({
@@ -121,6 +134,7 @@ function SlotEditor({
   onChange,
   onPatch,
   baselineError,
+  onOpenLibrary,
 }: {
   index: number;
   slot: Slot;
@@ -128,6 +142,7 @@ function SlotEditor({
   onChange: (s: Slot) => void;
   onPatch: (change: (s: Slot) => Slot) => void;
   baselineError?: string;
+  onOpenLibrary?: (item: LibraryItem) => void;
 }) {
   const character = slot.character ? data.character.get(slot.character) : undefined;
   const weapon = slot.weapon ? data.weapon.get(slot.weapon) : undefined;
@@ -175,6 +190,16 @@ function SlotEditor({
       </div>
 
       <Picker label="Character" value={slot.character} options={characterOptions} onChange={pickCharacter} allowClear />
+      {character && (
+        <InfoPanel
+          key={character.name}
+          item={{ kind: 'characters', name: character.name }}
+          onOpenLibrary={onOpenLibrary}
+          render={(lib) => (
+            <CharacterDetails character={character} data={data} lib={lib} compact build={{ level: slot.level, constellation: slot.constellation, talents: slot.talents }} />
+          )}
+        />
+      )}
       {character?.gcsim_key && data.special.get(character.gcsim_key) && (
         <div className="special-note">
           <p className="small">
@@ -233,6 +258,14 @@ function SlotEditor({
 
           <h3>Weapon</h3>
           <Picker label={`Weapon (${character.weapon_type.toLowerCase()})`} value={slot.weapon} options={weaponOptions} onChange={(w) => set({ weapon: w })} />
+          {weapon && (
+            <InfoPanel
+              key={weapon.name}
+              item={{ kind: 'weapons', name: weapon.name }}
+              onOpenLibrary={onOpenLibrary}
+              render={(lib) => <WeaponDetails weapon={weapon} lib={lib} compact build={{ level: slot.weaponLevel, refinement: slot.refinement }} />}
+            />
+          )}
           {weapon?.gcsim_patch && (
             <p className="warn small">
               Experimental: gcsim doesn't include {weapon.name} yet, so this app adds it from an unfinished gcsim pull request. Results may
@@ -259,10 +292,16 @@ function SlotEditor({
           {slot.sets.mode === '4pc' && (
             <Picker label="4-piece set" value={slot.sets.set} options={setOptions} onChange={(v) => set({ sets: { mode: '4pc', set: v } })} />
           )}
+          {slot.sets.mode === '4pc' && slot.sets.set && <SetInfo name={slot.sets.set} pieces={4} data={data} onOpenLibrary={onOpenLibrary} />}
           {slot.sets.mode === '2+2' && (
             <>
               <Picker label="First 2-piece" value={slot.sets.first} options={setOptions} onChange={(v) => slot.sets.mode === '2+2' && set({ sets: { ...slot.sets, first: v } })} />
               <Picker label="Second 2-piece" value={slot.sets.second} options={setOptions} onChange={(v) => slot.sets.mode === '2+2' && set({ sets: { ...slot.sets, second: v } })} />
+              {[slot.sets.first, slot.sets.second]
+                .filter((n, i, all): n is string => !!n && all.indexOf(n) === i)
+                .map((n) => (
+                  <SetInfo key={n} name={n} pieces={2} data={data} onOpenLibrary={onOpenLibrary} />
+                ))}
             </>
           )}
 
