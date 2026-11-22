@@ -6,9 +6,8 @@
 //   npm install --no-save genshin-db@5.2.15
 //   node scripts/export_library_text.mjs
 //
-// It also folds in a compact copy of the talent scaling from data/talents.json (label, the game's
-// level-10 text, and the value arrays for levels 1-15), so the Library can show any talent level
-// without loading the full 1.5 MB file.
+// It also writes each talent's scaling lines exactly as the game does: the game's template for each
+// line and its values for talent levels 1-15, so the Library can show any talent level.
 //
 // Text keeps the game's highlights as **bold**; links, colours and controller-specific wording are
 // reduced to the PC wording.
@@ -73,13 +72,26 @@ for (const w of weapons) {
   if (d) out.weapons[w.name] = { description: clean(d.description) };
 }
 
-// Talent scaling: per character and talent (Normal Attack, Skill, Burst, Special).
-const round = (v) => (v === null || v === undefined ? null : Number(Number(v).toPrecision(5)));
+// Talent scaling, exactly as the game writes it: each line's template ("1-Hit DMG|{param1:F1P}")
+// and the values it uses for talent levels 1-15 (one value when it doesn't change).
+const COMBAT_GROUP = { combat1: 'Normal Attack', combat2: 'Skill', combatsp: 'Special', combat3: 'Burst' };
 out.scaling = {};
-for (const row of JSON.parse(readFileSync('data/talents.json', 'utf8'))) {
-  const arrays = [row.A, row.B, row.F].filter((a) => Array.isArray(a) && a.some((v) => v !== null));
-  const byTalent = (out.scaling[row.char] ??= {});
-  (byTalent[row.cat] ??= []).push({ label: row.label, at10: row.raw10, values: arrays.map((a) => a.map(round)) });
+for (const c of characters) {
+  const t = g.talents(c.name);
+  if (!t) continue;
+  const groups = {};
+  for (const [key, group] of Object.entries(COMBAT_GROUP)) {
+    const attrs = t[key]?.attributes;
+    if (!attrs?.labels?.length) continue;
+    const used = new Set(attrs.labels.flatMap((l) => [...l.matchAll(/\{(param\d+):/g)].map((m) => m[1])));
+    const params = {};
+    for (const p of used) {
+      const v = attrs.parameters[p] ?? [];
+      params[p] = v.every((x) => x === v[0]) ? [v[0]] : v;
+    }
+    groups[group] = { lines: attrs.labels, params };
+  }
+  out.scaling[c.name] = groups;
 }
 
 // Compact (one line): the app downloads this file, so spaces would only add size.
