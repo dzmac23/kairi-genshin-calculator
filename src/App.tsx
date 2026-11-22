@@ -6,7 +6,7 @@ import { useGameData } from './data/gameData';
 import { getEngineVersion } from './engine/version';
 import ErrorBoundary from './components/ErrorBoundary';
 import ImportCard, { type ImportChoice } from './components/ImportCard';
-import { deliverFile } from './history/files';
+import { canShareFiles, deliverFile } from './history/files';
 import { runName, type RunRecord } from './history/model';
 import { RotationSaveBar, TeamSaveBar } from './screens/SavedTeams';
 import Switcher, { type LoadedState } from './screens/Switcher';
@@ -17,7 +17,7 @@ import { useHistory } from './history/useHistory';
 import type { RotationText } from './rotation/notation';
 import { DEFAULT_TOKEN_TABLE, OLD_DEFAULT_TOKEN_TABLES, parseTokenTable } from './rotation/tokens';
 import CompareScreen, { type Side } from './screens/CompareScreen';
-import HistoryScreen from './screens/HistoryScreen';
+import RunHistory from './screens/RunHistory';
 import HomeScreen from './screens/HomeScreen';
 import RotationScreen from './screens/RotationScreen';
 import ResultsScreen from './screens/ResultsScreen';
@@ -29,7 +29,7 @@ import { useTeam } from './team/useTeam';
 import { usePersistentState } from './usePersistentState';
 import { useSimulation, type FinishedRun } from './useSimulation';
 
-const screens = ['Home', 'Setup', 'Run', 'Results', 'Compare', 'History'] as const;
+const screens = ['Home', 'Setup', 'Run', 'Results'] as const;
 type Screen = (typeof screens)[number];
 
 /** A saved run as the Results screen shows it. */
@@ -208,6 +208,8 @@ export default function App() {
   const [compareA, setCompareA] = useState<RunRecord | undefined>();
   const [compareB, setCompareB] = useState<RunRecord | undefined>();
   const [compareAuto, setCompareAuto] = useState(false);
+  // The Results tab reads one run, or compares two (Scenario A and B).
+  const [resultsMode, setResultsMode] = useState<'run' | 'compare'>('run');
   // The run-saving code below reads this after the run finishes, so it needs the latest value.
   const compareAutoRef = useRef(false);
   const fresh = (r?: RunRecord) => (r ? (history.runs.find((x) => x.id === r.id) ?? r) : undefined); // picks up renames
@@ -264,6 +266,8 @@ export default function App() {
       // A new run finished: show it, and clear the label box for the next one.
       seenRun.current = r.id;
       setViewedRunId(undefined);
+      // "Tweak and compare" keeps the comparison open (the new run becomes Scenario B).
+      if (!compareAutoRef.current) setResultsMode('run');
       setRunLabel('');
     }
     let cancelled = false;
@@ -305,6 +309,22 @@ export default function App() {
   const shownRun = viewed ? recordToRun(viewed) : simulation.lastRun;
   const shownRecord = shownRun ? history.runs.find((r) => r.id === shownRun.id) : undefined;
 
+  const [runMessage, setRunMessage] = useState('');
+  const deleteRuns = (ids: string[]) => {
+    history.remove(ids);
+    if (viewedRunId && ids.includes(viewedRunId)) setViewedRunId(undefined);
+    if (ids.includes(compareA?.id ?? '') || ids.includes(compareB?.id ?? '')) setResultsMode('run');
+  };
+  const loadRun = (r: RunRecord) => {
+    // The loaded team and rotation are a copy, not a saved team being edited.
+    setActive({});
+    if (r.team) setTeam(structuredClone(r.team));
+    if (r.rotation) setRotation(cleanRotation(r.rotation, teamCharacterNames(r.team ?? [])));
+    if (r.settings) setSettings(cleanSettings(r.settings));
+    setSource('team');
+    setScreen('Setup');
+  };
+
   // Shows a button when a new version of the app has been downloaded in the background.
   const {
     needRefresh: [needRefresh],
@@ -341,7 +361,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="content">
+      <main className={screen === 'Results' ? 'content wide' : 'content'}>
         {importPreview && <ImportCard preview={importPreview} onCancel={() => setImportPreview(null)} onConfirm={confirmImport} />}
         {importDone && !importPreview && (
           <div className="banner">
@@ -465,71 +485,81 @@ export default function App() {
           />
         )}
         {screen === 'Results' && (
-          <ResultsScreen
-            run={shownRun}
-            name={shownRecord ? runName(shownRecord) : undefined}
-            olderRun={!!viewed && viewed.id !== simulation.lastRun?.id}
-            onShowLatest={simulation.lastRun ? () => setViewedRunId(undefined) : undefined}
-            onRename={shownRecord ? (label) => history.rename(shownRecord.id, label) : undefined}
-            label={shownRecord?.label}
-            onCompare={
-              shownRecord
-                ? () => {
-                    setCompareA(shownRecord);
-                    setCompareB(undefined);
-                    setCompareAuto(true);
-                    setScreen('Compare');
+          <div className="results-layout">
+            <RunHistory
+              runs={history.runs}
+              loaded={history.loaded}
+              viewingId={resultsMode === 'run' ? shownRun?.id : undefined}
+              comparing={resultsMode === 'compare' ? { a: compareA?.id, b: compareB?.id } : undefined}
+              onOpen={(id) => {
+                setViewedRunId(id);
+                setResultsMode('run');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onCompare={(ids) => {
+                const [older, newer] = history.runs.filter((r) => ids.includes(r.id)).sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+                setCompareA(older);
+                setCompareB(newer);
+                setCompareAuto(false);
+                setResultsMode('compare');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onDelete={deleteRuns}
+              onImportFile={openImport}
+            />
+            <div className="results-main">
+              {resultsMode === 'compare' ? (
+                <CompareScreen
+                  runs={history.runs}
+                  a={fresh(compareA)}
+                  b={fresh(compareB)}
+                  onPick={pickScenario}
+                  onSwap={() => {
+                    setCompareA(compareB);
+                    setCompareB(compareA);
+                  }}
+                  autoB={compareAuto}
+                  onAutoB={setCompareAuto}
+                  onGoToRun={() => setScreen('Run')}
+                  onClose={() => {
+                    setResultsMode('run');
+                    setCompareAuto(false);
+                  }}
+                />
+              ) : (
+                <ResultsScreen
+                  run={shownRun}
+                  name={shownRecord ? runName(shownRecord) : undefined}
+                  olderRun={!!viewed && viewed.id !== simulation.lastRun?.id}
+                  onShowLatest={simulation.lastRun ? () => setViewedRunId(undefined) : undefined}
+                  onRename={shownRecord ? (label) => history.rename(shownRecord.id, label) : undefined}
+                  label={shownRecord?.label}
+                  onCompare={
+                    shownRecord
+                      ? () => {
+                          setCompareA(shownRecord);
+                          setCompareB(undefined);
+                          setCompareAuto(true);
+                          setResultsMode('compare');
+                        }
+                      : undefined
                   }
-                : undefined
-            }
-            onGoToRun={() => setScreen('Run')}
-          />
-        )}
-        {screen === 'Compare' && (
-          <CompareScreen
-            runs={history.runs}
-            a={fresh(compareA)}
-            b={fresh(compareB)}
-            onPick={pickScenario}
-            onSwap={() => {
-              setCompareA(compareB);
-              setCompareB(compareA);
-            }}
-            autoB={compareAuto}
-            onAutoB={setCompareAuto}
-            onGoToRun={() => setScreen('Run')}
-          />
-        )}
-        {screen === 'History' && (
-          <HistoryScreen
-            runs={history.runs}
-            loaded={history.loaded}
-            onOpen={(id) => {
-              setViewedRunId(id);
-              setScreen('Results');
-            }}
-            onRename={history.rename}
-            onDelete={(ids) => {
-              history.remove(ids);
-              if (viewedRunId && ids.includes(viewedRunId)) setViewedRunId(undefined);
-            }}
-            onImportFile={openImport}
-            onCompare={(ids) => {
-              const [older, newer] = history.runs.filter((r) => ids.includes(r.id)).sort((x, y) => x.createdAt.localeCompare(y.createdAt));
-              setCompareA(older);
-              setCompareB(newer);
-              setScreen('Compare');
-            }}
-            onLoad={(r) => {
-              // The loaded team and rotation are a copy, not a saved team being edited.
-              setActive({});
-              if (r.team) setTeam(structuredClone(r.team));
-              if (r.rotation) setRotation(cleanRotation(r.rotation, teamCharacterNames(r.team ?? [])));
-              if (r.settings) setSettings(cleanSettings(r.settings));
-              setSource('team');
-              setScreen('Setup');
-            }}
-          />
+                  onGoToRun={() => setScreen('Run')}
+                  actions={
+                    shownRecord
+                      ? {
+                          onLoad: shownRecord.team ? () => loadRun(shownRecord) : undefined,
+                          onExport: async (share) => setRunMessage(await deliverFile(makeFile('runs', { runs: [shownRecord] }), share)),
+                          onDelete: () => deleteRuns([shownRecord.id]),
+                          sharing: canShareFiles(),
+                        }
+                      : undefined
+                  }
+                />
+              )}
+              {runMessage && <p className="small muted">{runMessage}</p>}
+            </div>
+          </div>
         )}
         </ErrorBoundary>
       </main>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getEngineVersion, type EngineVersion } from '../engine/version';
 import { canShareFiles } from '../history/files';
 
-export type HomeTarget = 'Setup' | 'Run' | 'Results' | 'Compare' | 'History';
+export type HomeTarget = 'Setup' | 'Run' | 'Results';
 
 type Props = {
   onGo: (screen: HomeTarget) => void;
@@ -16,8 +16,7 @@ type Props = {
 const STEPS: { screen: HomeTarget; title: string; text: string }[] = [
   { screen: 'Setup', title: 'Set up the team and rotation', text: 'Pick four characters, their weapons, artifact sets and stats, then type the rotation the community way (Furina E D Q > Skirk tE N5 Q …). Save the team: its first rotation becomes its main one.' },
   { screen: 'Run', title: 'Run it', text: 'Switch team or rotation in one tap, set the fight (enemy, optional HP for time to kill, energy), and run 100, 500 or 1,000 fights.' },
-  { screen: 'Results', title: 'Read the results', text: 'Team DPS, who does the damage, time lost waiting, rotation timing, damage over the fight, energy.' },
-  { screen: 'Compare', title: 'Compare', text: 'Change one thing, run again, and see whether it is really better or just luck.' },
+  { screen: 'Results', title: 'Read and compare the results', text: 'Team DPS, who does the damage, time lost waiting, rotation timing, damage over the fight, energy. Every run is kept in Run History beside it: tick two runs to see whether a change is really better or just luck.' },
 ];
 
 export default function HomeScreen({ onGo, onBackup, onImportFile, backupMessage, counts }: Props) {
@@ -51,10 +50,10 @@ export default function HomeScreen({ onGo, onBackup, onImportFile, backupMessage
         </ol>
         <p className="small muted">
           Every run is saved in{' '}
-          <button className="link small" onClick={() => onGo('History')}>
-            History
+          <button className="link small" onClick={() => onGo('Results')}>
+            Run History
           </button>{' '}
-          ({counts.runs} so far), where you can reopen, rename, export or import runs.
+          ({counts.runs} so far), in the Results tab, where you can reopen, compare, rename, export or import runs.
         </p>
       </section>
 

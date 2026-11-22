@@ -54,6 +54,9 @@ export function runName(run: Pick<RunRecord, 'label' | 'origin' | 'result' | 'te
   return `${prefix} – ${label || saved || runCharacters(run).join(', ') || 'unnamed'}`;
 }
 
+/** The name without "Successful Run – " (for the Run History list, where every run has it). */
+export const runShortName = (run: Parameters<typeof runName>[0]) => runName(run).replace(/^(Successful|Imported) Run – /, '');
+
 export function runDps(run: Pick<RunRecord, 'result'>): number {
   return run.result.statistics.dps.mean;
 }
