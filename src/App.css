@@ -468,3 +468,29 @@ label.file-button { display: inline-flex; align-items: center; cursor: pointer; 
 .rotation-box-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
 .opener-box > summary { cursor: pointer; }
 .notation-help details { margin-top: 0.5rem; }
+
+/* Results tab: Run History beside (wide screens) or above (phones) the reading area. */
+.content.wide { max-width: 1320px; }
+.results-layout { display: block; }
+.results-main { min-width: 0; }
+.run-history-title { display: none; margin: 0 0 0.5rem; }
+.run-history-toggle { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 0.5rem; background: none; border: 0; padding: 0; color: var(--text); text-align: left; min-height: 2.5rem; }
+.run-history-toggle .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.run-history-body { display: none; margin-top: 0.5rem; }
+.run-history.open .run-history-body { display: block; }
+.run-history .hint { margin: 0.5rem 0 0; }
+.run-history-files { margin-top: 0.75rem; }
+.run-history-files summary { cursor: pointer; color: var(--muted); }
+.run-row.viewing { background: #5ec8f214; border-radius: 8px; box-shadow: inset 3px 0 0 var(--accent); }
+.scenario-tag { font-weight: 700; }
+.scenario-tag-a { background: #5ec8f22e; color: var(--accent); }
+.scenario-tag-b { background: #f2c45e2e; color: var(--gold); }
+.run-title-name { display: block; font-size: 1.05rem; }
+.run-title-actions { margin-top: 0.5rem; }
+@media (min-width: 1024px) {
+  .results-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 1rem; align-items: start; }
+  .run-history { position: sticky; top: 4.5rem; max-height: calc(100dvh - 5.5rem); overflow-y: auto; margin-top: 0.75rem; }
+  .run-history-toggle { display: none; }
+  .run-history-title { display: block; }
+  .run-history-body { display: block; margin-top: 0; }
+}

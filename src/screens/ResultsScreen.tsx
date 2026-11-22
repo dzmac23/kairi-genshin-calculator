@@ -9,6 +9,7 @@ import { FAILURES, summarize, type GcsimResult, type ResultsView, type Stat } fr
 import type { RotationTiming, Span, TurnTiming } from '../rotation/timing';
 import { rotationName, TOP_UP } from '../rotation/notation';
 import type { FinishedRun } from '../useSimulation';
+import { DeleteButton } from './RunHistory';
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
 const pct = (share: number) => `${(share * 100).toFixed(1)}%`;
@@ -37,19 +38,21 @@ type Props = {
   /** True when showing a run opened from the History rather than the latest one. */
   olderRun?: boolean;
   onShowLatest?: () => void;
-  /** Makes this run Scenario A on the Compare screen, with the next run as B. */
+  /** Makes this run Scenario A in Compare, with the next run as B. */
   onCompare?: () => void;
   onGoToRun: () => void;
+  /** Load, export and delete, for a run saved in Run History. */
+  actions?: RunActions;
 };
 
-export default function ResultsScreen({ run, name, label, onRename, olderRun, onShowLatest, onCompare, onGoToRun }: Props) {
+export default function ResultsScreen({ run, name, label, onRename, olderRun, onShowLatest, onCompare, onGoToRun, actions }: Props) {
   const view = useMemo(() => (run ? summarize(run.result as GcsimResult) : undefined), [run]);
 
   if (!run || !view) {
     return (
       <section className="card">
         <h2>Results</h2>
-        <p className="muted">No results yet. Run a simulation and the full breakdown will appear here.</p>
+        <p className="muted">No results yet. Run a simulation and the full breakdown will appear here; every run is also saved in Run History.</p>
         <button onClick={onGoToRun}>Go to Run</button>
       </section>
     );
@@ -60,7 +63,7 @@ export default function ResultsScreen({ run, name, label, onRename, olderRun, on
 
   return (
     <>
-      {name && <RunTitle name={name} label={label} onRename={onRename} olderRun={olderRun} onShowLatest={onShowLatest} when={run.finishedAt} />}
+      {name && <RunTitle name={name} label={label} onRename={onRename} olderRun={olderRun} onShowLatest={onShowLatest} when={run.finishedAt} actions={actions} />}
       {isPlaceholderConfig(run.config) && (
         <div className="placeholder-note card">
           <strong>{PLACEHOLDER_LABEL}</strong>
@@ -131,6 +134,14 @@ export default function ResultsScreen({ run, name, label, onRename, olderRun, on
   );
 }
 
+export type RunActions = {
+  /** Puts the run's team, rotation and fight settings back on Setup (only runs made from Setup). */
+  onLoad?: () => void;
+  onExport: (share: boolean) => void;
+  onDelete: () => void;
+  sharing: boolean;
+};
+
 function RunTitle({
   name,
   label,
@@ -138,6 +149,7 @@ function RunTitle({
   olderRun,
   onShowLatest,
   when,
+  actions,
 }: {
   name: string;
   label?: string;
@@ -145,21 +157,28 @@ function RunTitle({
   olderRun?: boolean;
   onShowLatest?: () => void;
   when: Date;
+  actions?: RunActions;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label ?? '');
+  const [confirmLoad, setConfirmLoad] = useState(false);
+  const save = () => {
+    onRename?.(draft);
+    setEditing(false);
+  };
   return (
     <section className="card run-title">
       {editing && onRename ? (
         <div className="rename">
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Name this run (empty = character names)" aria-label="Run name" autoFocus />
-          <button
-            className="small-button"
-            onClick={() => {
-              onRename(draft);
-              setEditing(false);
-            }}
-          >
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            placeholder="Name this run (empty = character names)"
+            aria-label="Run name"
+            autoFocus
+          />
+          <button className="small-button" onClick={save}>
             Save
           </button>
           <button className="link small" onClick={() => setEditing(false)}>
@@ -167,24 +186,11 @@ function RunTitle({
           </button>
         </div>
       ) : (
-        <div className="card-head">
-          <strong>{name}</strong>
-          {onRename && (
-            <button
-              className="link small"
-              onClick={() => {
-                setDraft(label ?? '');
-                setEditing(true);
-              }}
-            >
-              Rename
-            </button>
-          )}
-        </div>
+        <strong className="run-title-name">{name}</strong>
       )}
       <p className="muted small">
         {when.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-        {olderRun && ' · a saved run from your History'}
+        {olderRun && ' · from your Run History'}
         {olderRun && onShowLatest && (
           <>
             {' · '}
@@ -194,6 +200,54 @@ function RunTitle({
           </>
         )}
       </p>
+      {actions && !editing && (
+        <div className="button-row run-title-actions">
+          {actions.onLoad && (
+            <button className="small-button" onClick={() => setConfirmLoad(true)}>
+              Load into Setup
+            </button>
+          )}
+          {onRename && (
+            <button
+              className="secondary small-button"
+              onClick={() => {
+                setDraft(label ?? '');
+                setEditing(true);
+              }}
+            >
+              Rename
+            </button>
+          )}
+          <button className="secondary small-button" onClick={() => actions.onExport(false)}>
+            Export
+          </button>
+          {actions.sharing && (
+            <button className="secondary small-button" onClick={() => actions.onExport(true)}>
+              Share
+            </button>
+          )}
+          <DeleteButton label="Delete" onConfirm={actions.onDelete} />
+        </div>
+      )}
+      {confirmLoad && actions?.onLoad && (
+        <div className="callout warn-callout">
+          <p className="small">This replaces your current team, rotation and fight settings with this run's.</p>
+          <div className="button-row">
+            <button
+              className="small-button"
+              onClick={() => {
+                setConfirmLoad(false);
+                actions.onLoad!();
+              }}
+            >
+              Replace
+            </button>
+            <button className="link small" onClick={() => setConfirmLoad(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

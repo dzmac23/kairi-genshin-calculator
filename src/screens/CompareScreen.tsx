@@ -1,4 +1,5 @@
-// Compare two runs: Scenario A and Scenario B, each from the History or a run file.
+// Compare two runs: Scenario A and Scenario B, each from Run History or a run file. Shown in the
+// Results tab in place of a single run.
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { Legend, SegmentedBar, slotClass, type Part } from '../components/Charts';
@@ -19,6 +20,8 @@ type Props = {
   autoB: boolean;
   onAutoB: (on: boolean) => void;
   onGoToRun: () => void;
+  /** Back to reading a single run. */
+  onClose: () => void;
 };
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
@@ -68,10 +71,16 @@ export default function CompareScreen(p: Props) {
   return (
     <>
       <section className="card">
-        <h2>Compare two runs</h2>
+        <div className="card-head">
+          <h2>Compare two runs</h2>
+          <button className="secondary small-button" onClick={p.onClose}>
+            ✕ Close compare
+          </button>
+        </div>
         <p className="muted small">
-          Pick Scenario A and Scenario B from your History, or import a run file (imported here, it isn't added to your
-          History). Works for different teams, or the same team with a different rotation, weapon or artifacts.
+          Scenario A and Scenario B: tick two runs in Run History, pick them here, or import a run file (imported here, it
+          isn't added to Run History). Works for different teams, or the same team with a different rotation, weapon or
+          artifacts.
         </p>
         <div className="scenarios">
           <ScenarioPicker side="a" runs={p.runs} chosen={p.a} onPick={(r) => p.onPick('a', r)} />
@@ -119,11 +128,11 @@ function ScenarioPicker({ side, runs, chosen, onPick }: { side: Side; runs: RunR
     <div className={`scenario scenario-${side}`}>
       <p className="scenario-label">{label}</p>
       <select
-        aria-label={`${label}: pick a run from your History`}
+        aria-label={`${label}: pick a run from Run History`}
         value={fromHistory ? chosen!.id : ''}
         onChange={(e) => onPick(runs.find((r) => r.id === e.target.value))}
       >
-        <option value="">{chosen && !fromHistory ? 'From a file (not in History)' : 'Pick a run from History…'}</option>
+        <option value="">{chosen && !fromHistory ? 'From a file (not in Run History)' : 'Pick a run…'}</option>
         {runs.map((r) => (
           <option key={r.id} value={r.id}>
             {runName(r)} · {when(r.createdAt)} · {fmt(runDps(r))}
