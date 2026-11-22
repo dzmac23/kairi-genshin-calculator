@@ -10,7 +10,8 @@ import { deliverFile } from './history/files';
 import { runName, type RunRecord } from './history/model';
 import { RotationSaveBar, TeamSaveBar } from './screens/SavedTeams';
 import Switcher, { type LoadedState } from './screens/Switcher';
-import { cleanSavedTeam, isSavedTeam, mainRotation, removeRotation, sameRotation, sameTeam, savedNames, type ActiveSaved, type SavedTeam } from './teams/model';
+import { cleanSavedTeam, isSavedTeam, mainRotation, removeRotation, sameRotation, sameTeam, savedNames, teamCharacterNames, type ActiveSaved, type SavedTeam } from './teams/model';
+import { cleanRotation, modernizeRotation } from './rotation/modernize';
 import { makeFile, readTransferFile, type TransferPreview } from './transfer';
 import { useHistory } from './history/useHistory';
 import type { RotationText } from './rotation/notation';
@@ -53,12 +54,17 @@ export default function App() {
   const [config, setConfig] = useState('');
   const [source, setSource] = useState<RunSource>('team');
   // The team, rotation, fight settings and shorthand table, all saved on this device.
-  const { team, setTeam } = useTeam();
-  const [rotation, setRotation] = usePersistentState<RotationText>('rotation', { opener: '', loop: '' }, (v) => {
-    if (typeof v === 'string') return { opener: '', loop: v }; // saved by Step 5, before the Opener existed
-    const r = v as Partial<RotationText> | undefined;
-    return r && typeof r === 'object' ? { opener: String(r.opener ?? ''), loop: String(r.loop ?? '') } : undefined;
-  });
+  const { team, setTeam, loaded: teamLoaded } = useTeam();
+  const [rotation, setRotation, rotationLoaded] = usePersistentState<RotationText>('rotation', { opener: '', loop: '' }, (v) =>
+    v === undefined || v === null ? undefined : cleanRotation(v, []),
+  );
+  // Rotations saved in the older notation are converted once the team's names are known.
+  const modernized = useRef(false);
+  useEffect(() => {
+    if (!teamLoaded || !rotationLoaded || modernized.current) return;
+    modernized.current = true; // only on start: later changes are typed in the current notation
+    setRotation((r) => modernizeRotation(r, teamCharacterNames(team)));
+  }, [teamLoaded, rotationLoaded, team, setRotation]);
   const [settings, setSettings] = usePersistentState('settings', DEFAULT_SETTINGS, (v) => cleanSettings(v ?? {}));
   const [tokenTable, setTokenTable] = usePersistentState('tokenTable', DEFAULT_TOKEN_TABLE, (v) =>
     // An unedited copy of an older built-in table is upgraded (e.g. to add W = walk).
@@ -78,7 +84,7 @@ export default function App() {
       return {
         problems: [`Couldn't build the config: ${error instanceof Error ? error.message : String(error)}. Check the Setup screen.`],
         notes: [],
-        translation: { turns: [], ok: false, counters: { loop: false, cycles: [] } },
+        translation: { turns: [], ok: false, counters: { loop: false, cycles: [] }, rotations: 1 },
         checks: [],
       };
     }
@@ -187,7 +193,7 @@ export default function App() {
       updateTeam(activeTeam.id, (t) => removeRotation(t, rid));
       if (active.rotationId === rid) setActive({ teamId: activeTeam.id });
     },
-    /** Empties the Opener and Loop. The team stays loaded; the rotation is no longer linked. */
+    /** Empties the Start of fight and the rotations. The team stays loaded; the rotation is no longer linked. */
     clear: () => {
       setRotation({ opener: '', loop: '' });
       if (activeTeam) setActive({ teamId: activeTeam.id });
@@ -223,7 +229,7 @@ export default function App() {
     const c = choice.current;
     if (c) {
       setTeam(structuredClone(c.team));
-      setRotation({ ...c.rotation });
+      setRotation(cleanRotation(c.rotation, teamCharacterNames(c.team)));
       setSettings(cleanSettings(c.settings));
       if (typeof c.tokenTable === 'string') setTokenTable(c.tokenTable);
       if ([100, 500, 1000].includes(c.iterations)) setIterations(c.iterations);
@@ -518,7 +524,7 @@ export default function App() {
               // The loaded team and rotation are a copy, not a saved team being edited.
               setActive({});
               if (r.team) setTeam(structuredClone(r.team));
-              if (r.rotation) setRotation({ ...r.rotation });
+              if (r.rotation) setRotation(cleanRotation(r.rotation, teamCharacterNames(r.team ?? [])));
               if (r.settings) setSettings(cleanSettings(r.settings));
               setSource('team');
               setScreen('Setup');

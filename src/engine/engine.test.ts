@@ -201,6 +201,58 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(hits).toContain("Sharky's Surging Bite");
   });
 
+  it('alternates Rotations A and B: Furina bursts only in Rotation A', () => {
+    const plan = {
+      opener: '',
+      loop: 'Neuvillette tE > Kazuha tE P > Furina tE Q > Xilonen E N5 Q > Neuvillette C',
+      alternates: ['Neuvillette tE > Kazuha tE P > Furina tE > Xilonen E N5 Q > Neuvillette C'],
+    };
+    const built = buildConfig(placeholderTeam(data), data, plan, table, DEFAULT_SETTINGS, 1);
+    expect(built.problems).toEqual([]);
+    expect(built.translation.rotations).toBe(2);
+    const logs: { frame: number; msg: string }[] = JSON.parse(sample(built.timingConfig!, '1')).logs;
+    const markers = logs.filter((l) => /^kc [ol]\d+$/.test(l.msg)).map((l) => l.msg);
+    // A has turns 1-5 and B turns 6-10, played A, B, A, B…
+    expect(markers.slice(0, 10)).toEqual(['kc l1', 'kc l2', 'kc l3', 'kc l4', 'kc l5', 'kc l6', 'kc l7', 'kc l8', 'kc l9', 'kc l10']);
+    expect(markers[10]).toBe('kc l1');
+    const timing = measureTiming([{ markers: logs.filter((l) => /^kc t?[ol]\d+$/.test(l.msg)), endFrame: 90 * 60 }], built.translation.turns);
+    expect(timing.turns.map((t) => `${t.rotation}${t.position}`)).toEqual(['01', '02', '03', '04', '05', '11', '12', '13', '14', '15']);
+  });
+
+  it('tops up Kinich and Zibai before their special skill, so an exact count never stops the run', () => {
+    const team = placeholderTeam(data);
+    const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
+    team[0] = { ...team[0], character: 'Kinich', weapon: weapon('fangofthemountainking'), sets: { mode: 'none' } };
+    team[2] = { ...team[2], character: 'Zibai', weapon: weapon('favoniussword'), sets: { mode: 'none' } };
+    // N1 is far too few for a full bar: without the top-up gcsim would stop (Kinich) or stand still (Zibai).
+    const plan = { opener: '', loop: 'Kinich E N1 E > Kazuha tE P > Zibai E N1 E > Xilonen E N5 Q' };
+    const built = buildConfig(team, data, plan, table, DEFAULT_SETTINGS, 1);
+    expect(built.problems).toEqual([]);
+    expect(built.checks).toEqual([]);
+    const out = JSON.parse(sample(built.timingConfig!, '1'));
+    expect(out.error).toBeUndefined();
+    const hits = out.logs.filter((l: { event: string }) => l.event === 'damage').map((l: { msg: string }) => l.msg);
+    expect(hits).toContain('Scalespiker Cannon');
+    expect(hits.some((h: string) => /Spirit Steed/i.test(h))).toBe(true);
+    const markers = out.logs.filter((l: { msg: string }) => /^kc t?[ol]\d+$/.test(l.msg));
+    const timing = measureTiming([{ markers, endFrame: 90 * 60 }], built.translation.turns);
+    const [kinich, , zibai] = timing.turns;
+    expect(kinich.topUp!.needed).toBeGreaterThan(0);
+    expect(zibai.topUp!.needed).toBeGreaterThan(0);
+  });
+
+  it('runs hold words and hold times', () => {
+    const team = placeholderTeam(data);
+    const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
+    team[0] = { ...team[0], character: 'Nahida', weapon: weapon('athousandfloatingdreams'), sets: { mode: 'none' } };
+    const plan = { opener: '', loop: 'Nahida hE(1.5s) N3 > Kazuha fE P > Furina tE Q > Xilonen E N5 Q > nahida fe q' };
+    const built = buildConfig(team, data, plan, table, DEFAULT_SETTINGS, 1);
+    expect(built.problems).toEqual([]);
+    expect(built.config).toContain('nahida skill[hold=90]');
+    expect(built.config).toContain('nahida skill[hold=300]');
+    expect(JSON.parse(sample(built.config!, '1')).error).toBeUndefined();
+  });
+
   it('accepts any level, such as 81/90, with stats between 80/90 and 90/90', () => {
     const furina = placeholderTeam(data)[2];
     const hpAt = (level: string) => {

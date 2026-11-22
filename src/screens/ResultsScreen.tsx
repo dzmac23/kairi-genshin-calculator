@@ -7,6 +7,7 @@ import { resistPercent, useGameData } from '../data/gameData';
 import { isPlaceholderConfig, PLACEHOLDER_LABEL, PLACEHOLDER_NOTE } from '../placeholder';
 import { FAILURES, summarize, type GcsimResult, type ResultsView, type Stat } from '../results/summarize';
 import type { RotationTiming, Span, TurnTiming } from '../rotation/timing';
+import { rotationName, TOP_UP } from '../rotation/notation';
 import type { FinishedRun } from '../useSimulation';
 
 const fmt = (n: number) => Math.round(n).toLocaleString();
@@ -512,7 +513,7 @@ const span = (s: Span) => `${s.mean.toFixed(1)} s`;
 const spread = (s: Span) => `${s.min.toFixed(1)}–${s.max.toFixed(1)} s`;
 /**
  * A turn "varies a lot" when its slowest time is well above its fastest (at least 1.5 s and 30% of
- * its average): usually waiting, or a ? / @ move that only happens in some loops.
+ * its average): usually waiting, or a ? or / move that only happens sometimes.
  */
 const variesALot = (s: Span) => s.max - s.min >= Math.max(1.5, s.mean * 0.3);
 
@@ -526,10 +527,13 @@ function RotationTimingTables({ timing, keyToSlot }: { timing: RotationTiming; k
   const opener = timing.turns.filter((t) => t.section === 'opener');
   const loop = timing.turns.filter((t) => t.section === 'loop');
   const loopTotal = timing.loop?.mean ?? 0;
+  // Rotations A, B… take turns; one "cycle" is all of them once.
+  const rotations = Math.max(1, ...loop.map((t) => (t.rotation ?? 0) + 1));
+  const cycle = rotations > 1 ? `One cycle (${Array.from({ length: rotations }, (_, i) => String.fromCharCode(65 + i)).join(' + ')})` : 'One rotation';
   const slices: Slice[] = loop
     .filter((t) => t.time && t.time.mean > 0)
     .map((t) => ({
-      tag: String(t.index),
+      tag: rotations > 1 ? `${String.fromCharCode(65 + (t.rotation ?? 0))}${t.position}` : String(t.position),
       label: t.text,
       slot: t.key ? keyToSlot.get(t.key) : undefined,
       value: t.time!.mean,
@@ -540,11 +544,11 @@ function RotationTimingTables({ timing, keyToSlot }: { timing: RotationTiming; k
       <dl className="stats">
         {timing.opener && (
           <>
-            <dt>Opener length</dt>
+            <dt>Start of fight</dt>
             <dd>{span(timing.opener)}</dd>
           </>
         )}
-        <dt>Loop length (one cycle)</dt>
+        <dt>{cycle}</dt>
         <dd>
           {timing.loop ? (
             <>
@@ -556,7 +560,7 @@ function RotationTimingTables({ timing, keyToSlot }: { timing: RotationTiming; k
         </dd>
         {timing.loopsPerFight !== undefined && (
           <>
-            <dt>Loops in the fight</dt>
+            <dt>{rotations > 1 ? 'Cycles' : 'Rotations'} in the fight</dt>
             <dd>{timing.loopsPerFight.toFixed(1)}</dd>
           </>
         )}
@@ -564,25 +568,32 @@ function RotationTimingTables({ timing, keyToSlot }: { timing: RotationTiming; k
 
       {slices.length > 0 && (
         <>
-          <p className="bar-title">One loop, turn by turn</p>
-          <PieChart slices={slices} label="One loop, turn by turn" />
+          <p className="bar-title">{cycle}, turn by turn</p>
+          <PieChart slices={slices} label={`${cycle}, turn by turn`} />
         </>
       )}
 
       {opener.length > 0 && (
-        <TurnTable title="Opener" turns={opener} total={timing.opener} keyToSlot={keyToSlot} shareOf={timing.opener?.mean} />
+        <TurnTable title="Start of fight" turns={opener} total={timing.opener} keyToSlot={keyToSlot} shareOf={timing.opener?.mean} />
       )}
-      <TurnTable title="Loop" turns={loop} total={timing.loop} keyToSlot={keyToSlot} shareOf={loopTotal} />
+      {rotations > 1 ? (
+        Array.from({ length: rotations }, (_, r) => (
+          <TurnTable key={r} title={rotationName(r)} turns={loop.filter((t) => (t.rotation ?? 0) === r)} keyToSlot={keyToSlot} shareOf={loopTotal} />
+        ))
+      ) : (
+        <TurnTable title="Rotation" turns={loop} total={timing.loop} keyToSlot={keyToSlot} shareOf={loopTotal} />
+      )}
 
       <details className="how-to-read">
         <summary>How to read this</summary>
         <p className="small muted">
-          The Opener runs once; the Loop repeats until the fight ends. A turn's time runs from when gcsim starts it until it
-          starts the next turn, so the swap in and any waiting (for a cooldown or energy) count toward that turn, and the
-          Loop's turns add up to one loop. A very short turn means the next character could swap in early, not that the
-          animation is that short. Times are averaged over {timing.replays} replayed fights; only complete loops are
-          counted. A turn tagged “⚠ varies” has a slowest time well above its fastest (at least 1.5 s and 30%): usually
-          waiting, which Time lost above explains, or a ? / @ move that only happens in some loops.
+          The Start of fight runs once; the rotation repeats until the fight ends (Rotations A, B… take turns, and one
+          cycle is each of them once). A turn's time runs from when gcsim starts it until it starts the next turn, so the
+          swap in and any waiting (for a cooldown or energy) count toward that turn, and the turns add up to one cycle. A
+          very short turn means the next character could swap in early, not that the animation is that short. Times are
+          averaged over {timing.replays} replayed fights; only complete cycles are counted. A turn tagged “⚠ varies” has
+          a slowest time well above its fastest (at least 1.5 s and 30%): usually waiting, which Time lost above
+          explains, or a ? or / move that only happens sometimes.
         </p>
       </details>
     </>
@@ -621,7 +632,13 @@ function TurnTable({
                   )}
                   {t.skipped > 0 && (
                     <div className="muted small">
-                      Skipped in {t.skipped} of {t.measured} {t.section === 'opener' ? 'fights' : 'loops'}
+                      Skipped in {t.skipped} of {t.measured} {t.section === 'opener' ? 'fights' : 'cycles'}
+                    </div>
+                  )}
+                  {t.topUp && t.topUp.needed > 0 && (
+                    <div className="muted small">
+                      The bar wasn't full in time in {t.topUp.needed} of {t.topUp.played} times: the app added{' '}
+                      {Math.round((t.topUp.attacks / t.topUp.needed) * 10) / 10} {TOP_UP[t.key ?? '']?.what ?? 'attacks'} on average.
                     </div>
                   )}
                   {t.time && variesALot(t.time) && <span className="tag warn-tag">⚠ varies {spread(t.time)}</span>}

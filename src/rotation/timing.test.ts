@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Turn } from './notation';
 import { measureTiming } from './timing';
 
-const turn = (section: Turn['section'], index: number, text: string): Turn => ({ section, index, text, tokens: [], statements: ['x;'] });
+const turn = (section: Turn['section'], index: number, text: string): Turn => ({ section, index, position: index, text, tokens: [], statements: ['x;'] });
 const turns = [turn('opener', 1, 'Skirk hE'), turn('loop', 1, 'Furina Q'), turn('loop', 2, 'Shenhe hE@2/2')];
 const m = (frame: number, msg: string) => ({ frame, msg });
 
@@ -27,6 +27,15 @@ describe('measureTiming', () => {
       ['Furina Q', 4.5, 2, 0],
       ['Shenhe hE@2/2', 1, 2, 1],
     ]);
+  });
+
+  it("counts the extra attacks Kinich's automatic top-up needed, per time the turn was played", () => {
+    const kinich: Turn = { ...turn('loop', 1, 'Kinich E N4 E'), topUps: [1] };
+    const r = measureTiming(
+      [{ endFrame: 900, markers: [m(0, 'kc l1'), m(10, 'kc tl1'), m(20, 'kc tl1'), m(100, 'kc l1'), m(200, 'kc l1')] }],
+      [kinich],
+    );
+    expect(r.turns[0].topUp).toEqual({ played: 3, needed: 1, attacks: 2 });
   });
 
   it('copes with a loop that never finishes within the fight', () => {

@@ -17,7 +17,7 @@
   },
   "bennett": {
    "special": "Skill has hold levels.",
-   "howTo": "tE · hE (level 1) · hE(2) (level 2)",
+   "howTo": "tE · hE (level 1) · fE (level 2)",
    "watch": [],
    "source": "bennett/skill.go"
   },
@@ -29,7 +29,7 @@
   },
   "charlotte": {
    "special": "Tap and hold skills are different moves; the hold can be any length.",
-   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "howTo": "tE or hE (the shortest hold) · longer: a time like hE(1.5s) · fE (full hold)",
    "watch": [],
    "source": "charlotte/skill.go"
   },
@@ -44,7 +44,7 @@
   },
   "chevreuse": {
    "special": "Tap and hold skills are different moves; the hold can be any length.",
-   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "howTo": "tE or hE (the shortest hold) · longer: a time like hE(1.5s) · fE (full hold)",
    "watch": [],
    "source": "chevreuse/skill.go"
   },
@@ -172,10 +172,10 @@
    "source": "illuga/skill.go"
   },
   "jean": {
-   "special": "Tap and hold skills; her C1 needs a hold of at least 60 frames.",
-   "howTo": "tE or hE · for C1: hE(60)",
+   "special": "Tap and hold skills; her C1 needs a hold of at least 1 second.",
+   "howTo": "tE or hE · for C1: hE(1s) or longer",
    "watch": [
-    "At C1 or higher, hE alone (1 frame) doesn't trigger C1."
+    "At C1 or higher, hE alone (the shortest hold) doesn't trigger C1: hold at least 1 s."
    ],
    "source": "jean/skill.go"
   },
@@ -203,9 +203,9 @@
   },
   "kinich": {
    "special": "Grapple: Normal Attacks (Loop Shots) fill a 20-point bar; skill on a full bar fires the Scalespiker Cannon.",
-   "howTo": "E L E (L = Loop Shot until the bar is full)",
+   "howTo": "E Fill E (or exact Loop Shots, like E N4 E)",
    "watch": [
-    "Skill on a bar that isn't full stops the run.",
+    "If the bar isn't full when you fire, the app adds Loop Shots until it is (instead of gcsim stopping), and Results says how often that happened.",
     "No Charged Attack or plunge while grappling: the run stops.",
     "Fire the cannon with a plain E: gcsim makes a held cannon 18 frames faster than it really is.",
     "In game a short hold enters the grapple faster than a tap; gcsim times them the same, so E works. A full hold is manual aiming and only adds time here.",
@@ -215,15 +215,15 @@
   },
   "kirara": {
    "special": "Short hold is its own skill version (Flipclaw Strike); a hold can also be any length.",
-   "howTo": "sE (short hold) · tE · hE(60) for a longer hold",
+   "howTo": "sE (short hold) · tE · a longer hold: hE(2s) or fE",
    "watch": [
-    "hE alone is a 1-frame hold, not the short hold: use sE."
+    "hE alone is the shortest hold, not the short-hold version: use sE."
    ],
    "source": "kirara/skill.go:62"
   },
   "lanyan": {
    "special": "Tap and hold skills are different moves; the hold can be any length.",
-   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "howTo": "tE or hE (the shortest hold) · longer: a time like hE(1.5s) · fE (full hold)",
    "watch": [],
    "source": "lanyan/skill.go"
   },
@@ -252,7 +252,7 @@
   },
   "lynette": {
    "special": "Tap and hold skills are different moves; the hold can be any length.",
-   "howTo": "tE or hE (the shortest hold) · longer hold: hE(60)",
+   "howTo": "tE or hE (the shortest hold) · longer: a time like hE(1.5s) · fE (full hold)",
    "watch": [],
    "source": "lynette/skill.go"
   },
@@ -281,29 +281,29 @@
   },
   "mualani": {
    "special": "Surfing: moving near enemies gives up to 3 stacks; Normal Attack is the bite (Surging Bite at 3).",
-   "howTo": "E M N (M = keep surfing until 3 stacks)",
+   "howTo": "E Fill N (Fill = keep surfing until 3 stacks)",
    "watch": [
-    "The time spent moving counts, not the number of moves: use M.",
+    "Stacks come from touching enemies while surfing (time spent moving), not from a number of presses: use Fill.",
     "No Charged Attack while surfing: the run stops.",
     "Swapping out ends surfing."
    ],
    "source": "mualani/skill.go:157-210, attack.go:117, mualani.go:111"
   },
   "nahida": {
-   "special": "Tap and hold skills are different moves; hE is the shortest hold (16 frames).",
-   "howTo": "tE or hE · longer hold: hE(60)",
+   "special": "Tap and hold skills are different moves; hE is the shortest hold.",
+   "howTo": "tE or hE (the shortest hold) · longer: a time like hE(1.5s) · fE (full hold)",
    "watch": [],
    "source": "nahida/skill.go:89"
   },
   "navia": {
    "special": "Hold skill aims; hE is the shortest hold.",
-   "howTo": "tE or hE · longer aim: hE(60)",
+   "howTo": "tE or hE (the shortest hold) · longer: a time like hE(1.5s) · fE (full hold)",
    "watch": [],
    "source": "navia/skill.go:117"
   },
   "nefer": {
    "special": "Charged Attack is Phantasm Performance when it's ready; a held Charged Attack is Slither.",
-   "howTo": "E C · C(hold=60)",
+   "howTo": "E C · held (Slither): hC, fC (full) or a time like hC(1s)",
    "watch": [
     "Needs Verdant Dew.",
     "Swapping out clears Shadow Dance."
@@ -361,9 +361,9 @@
   },
   "sayu": {
    "special": "Short hold is its own skill version (one roll and the kick); a hold can also be any length.",
-   "howTo": "sE (short hold) · tE · hE(60) for a longer roll",
+   "howTo": "sE (short hold) · tE · a longer roll: hE(2s) or fE",
    "watch": [
-    "hE alone is a 1-frame hold, not the short hold: use sE."
+    "hE alone is the shortest hold, not the short-hold version: use sE."
    ],
    "source": "sayu/skill.go:56"
   },
@@ -377,7 +377,7 @@
   },
   "sigewinne": {
    "special": "Skill has hold levels (1 = short hold); her burst can be shortened.",
-   "howTo": "tE · hE (short hold, tier 1) · hE(2) (tier 2) · Q(ticks=…)",
+   "howTo": "tE · hE (short hold, tier 1) · fE (tier 2) · Q(ticks=…)",
    "watch": [
     "After a shortened burst, only dash or jump next."
    ],
@@ -385,7 +385,7 @@
   },
   "skirk": {
    "special": "Tap skill is Seven-Phase Flash: her attacks change and burst becomes Extinction. Hold skill absorbs Void Rifts without Flash.",
-   "howTo": "tE N… C… Q · hold: hE (any length up to hE(184))",
+   "howTo": "tE N… C… Q · hold: hE, fE (full hold) or a time like hE(2s)",
    "watch": [
     "No second skill during Seven-Phase Flash: the run stops.",
     "Swapping out ends Flash."
@@ -467,16 +467,16 @@
   },
   "yunjin": {
    "special": "Skill has hold levels, and a perfect counter.",
-   "howTo": "tE · hE (level 1) · hE(2) (level 2) · E(perfect=1)",
+   "howTo": "tE · hE (level 1) · fE (level 2) · E(perfect=1)",
    "watch": [],
    "source": "yunjin/skill.go"
   },
   "zibai": {
    "special": "Skill is Lunar Phase Shift: Radiance builds; skill again at 70 is Spirit Steed's Stride.",
-   "howTo": "E N… E",
+   "howTo": "E Fill E (or exact attacks, like E N3 E)",
    "watch": [
-    "gcsim waits until 70 Radiance; the wait shows as \"stamina\" in Time lost.",
-    "Normal Attacks shorten the wait (+5 each)."
+    "If Radiance isn't at 70 when you press E again, the app adds Normal Attacks until it is (instead of standing still), and Results says how often that happened.",
+    "Normal Attacks build Radiance faster than waiting (+5 each, besides the steady build-up)."
    ],
    "source": "zibai/zibai.go:73, skill.go:200-242"
   }

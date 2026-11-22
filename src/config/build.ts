@@ -7,16 +7,16 @@
 //   target lvl=L pyro=.. hydro=.. … physical=.. [freeze_resist=1] radius=2 pos=...;
 //   energy every interval=480,720 amount=1;       (when random energy is on)
 //   active <first character>;
-//   <loop counters, only when the rotation uses @>
-//   <opener statements, run once>
-//   while 1 { <loop statements> }
+//   <loop counters, only for the older @ notation>
+//   <Start of fight statements, run once>
+//   while 1 { <Rotation A statements> <Rotation B statements> … }
 // With an enemy HP, gcsim runs each fight until every enemy is dead instead of for the fight length.
-// The fight length then becomes a time limit: before each Loop turn, `if f() >= limit { break; }`
+// The fight length then becomes a time limit: before each repeating turn, `if f() >= limit { break; }`
 // ends the rotation, which ends the fight (a turn already started still finishes).
 
 import { ENEMY_ELEMENTS, type Enemy, type GameData } from '../data/gameData';
 import { checkRotation, type Check } from '../rotation/checks';
-import { translateRotation, type RotationText, type TeamMember, type Translation, type Turn } from '../rotation/notation';
+import { rotationBoxes, translateRotation, turnLabel, type RotationText, type TeamMember, type Translation, type Turn } from '../rotation/notation';
 import type { TokenTable } from '../rotation/tokens';
 import { checkTeam, num, teamToGcsim } from '../team/gcsim';
 import type { Team } from '../team/model';
@@ -82,12 +82,13 @@ export function buildConfig(
     .map((s) => ({ key: data.character.get(s.character!)!.gcsim_key!, name: s.character!, constellation: s.constellation }));
   const checks = checkRotation(translation, checkMembers, data.rules);
   const loopTurns = translation.turns.filter((t) => t.section === 'loop');
-  if (!rotation.loop.trim()) problems.push('Rotation: type a Loop in the Rotation section of the Setup screen.');
+  const typed = rotationBoxes(rotation).some((b) => b.trim());
+  if (!typed) problems.push('Rotation: type a Rotation in the Rotation section of the Setup screen.');
   for (const t of translation.turns) {
-    if (t.error) problems.push(`Rotation (${t.section === 'opener' ? 'Opener' : 'Loop'} turn ${t.index}): ${t.error}`);
+    if (t.error) problems.push(`Rotation (${turnLabel(t, translation.rotations)}): ${t.error}`);
   }
-  if (rotation.loop.trim() && translation.ok && !loopTurns.some((t) => t.statements && !t.raw)) {
-    problems.push('Rotation: no Loop turn uses a character gcsim supports.');
+  if (typed && translation.ok && !loopTurns.some((t) => t.statements && !t.raw)) {
+    problems.push('Rotation: no repeating turn uses a character gcsim supports.');
   }
   if (table.errors.length) problems.push(`Shorthand table: ${table.errors[0].message}`);
   const enemy = settings.enemy ? data.enemy.get(settings.enemy) : undefined;
@@ -107,7 +108,10 @@ export function buildConfig(
           // The time limit for fights with enemy HP (in the Loop only: break needs a loop).
           ...(section === 'loop' && limit ? [`if f() >= ${limit} { break; }`] : []),
           ...(markers ? [`print("${turnMarker(t)}");`] : []),
-          ...t.statements!,
+          // Timing replays: each extra attack of Kinich's or Zibai's top-up prints "kc t" + the turn.
+          ...t.statements!.map((st, i) =>
+            markers && t.topUps?.includes(i) ? st.replace(/ \}$/, ` print("kc t${turnMarker(t).slice(3)}"); }`) : st,
+          ),
         ])
         .map((l) => indent + l);
     return [

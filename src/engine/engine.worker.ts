@@ -65,7 +65,8 @@ async function handle(req: WorkerRequest): Promise<Omit<Extract<WorkerReply, { o
       throwIfError(out);
       const logs: { frame: number; msg: string }[] = JSON.parse(out).logs ?? [];
       return {
-        markers: logs.filter((l) => /^kc [ol]\d+$/.test(l.msg)).map((l) => ({ frame: l.frame, msg: l.msg })),
+        // Turn markers ("kc l3") and Kinich/Zibai top-up markers ("kc tl3").
+        markers: logs.filter((l) => /^kc t?[ol]\d+$/.test(l.msg)).map((l) => ({ frame: l.frame, msg: l.msg })),
         // Where the replay ended (the last logged frame): fights with enemy HP end when they die.
         endFrame: logs.reduce((a, l) => Math.max(a, l.frame), 0),
       };

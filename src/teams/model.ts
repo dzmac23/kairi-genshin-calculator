@@ -3,7 +3,8 @@
 // the main one until another is made main.
 // Fight settings are not part of a saved team (they change from test to test).
 
-import type { RotationText } from '../rotation/notation';
+import { rotationBoxes, type RotationText } from '../rotation/notation';
+import { cleanRotation } from '../rotation/modernize';
 import { cleanSlot, emptySlot, type Team } from '../team/model';
 
 export type SavedRotation = { id: string; label: string; rotation: RotationText };
@@ -32,7 +33,10 @@ export function sameTeam(a: Team, b: Team): boolean {
 }
 
 export function sameRotation(a: RotationText, b: RotationText): boolean {
-  return a.opener.trim() === b.opener.trim() && a.loop.trim() === b.loop.trim();
+  const boxes = (r: RotationText) => [r.opener, ...rotationBoxes(r)].map((x) => x.trim());
+  // An empty extra rotation box doesn't make a different rotation.
+  const strip = (x: string[]): string[] => (x.length > 2 && !x[x.length - 1] ? strip(x.slice(0, -1)) : x);
+  return JSON.stringify(strip(boxes(a))) === JSON.stringify(strip(boxes(b)));
 }
 
 export function teamCharacterNames(team: Team): string[] {
@@ -55,7 +59,7 @@ export function isSavedTeam(x: unknown): x is SavedTeam {
 /** Repairs a saved team read from storage or a file (fills in fields added in later versions). */
 // Teams saved before main rotations existed get their oldest rotation as the main one.
 export function cleanSavedTeam(t: SavedTeam): SavedTeam {
-  const rotations = t.rotations.map((r) => ({ ...r, rotation: { opener: String(r.rotation.opener ?? ''), loop: String(r.rotation.loop ?? '') } }));
+  const rotations = t.rotations.map((r) => ({ ...r, rotation: cleanRotation(r.rotation, teamCharacterNames(t.team)) }));
   const main = rotations.some((r) => r.id === t.mainRotationId) ? t.mainRotationId : rotations[0]?.id;
   return { ...t, team: t.team.map(cleanSlot), rotations, mainRotationId: main };
 }

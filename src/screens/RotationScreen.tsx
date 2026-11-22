@@ -2,14 +2,14 @@ import { useState, type ReactNode } from 'react';
 import type { BuildResult } from '../config/build';
 import type { Special } from '../data/gameData';
 import type { Check } from '../rotation/checks';
-import type { RotationText, TeamMember, Turn } from '../rotation/notation';
+import { rotationBoxes, rotationName, type RotationText, type TeamMember, type Turn } from '../rotation/notation';
 import { DEFAULT_TOKEN_TABLE } from '../rotation/tokens';
 import { Confirm } from './SavedTeams';
 
 type Props = {
   rotation: RotationText;
   onRotationChange: (rotation: RotationText) => void;
-  /** Empties the Opener and Loop (and unlinks the saved rotation). */
+  /** Empties the Start of fight and the rotations (and unlinks the saved rotation). */
   onClear: () => void;
   /** Clearing would lose unsaved work, so ask first. */
   clearNeedsConfirm: boolean;
@@ -27,19 +27,45 @@ type Props = {
 const EXAMPLES = {
   opener: 'For example: Skirk hE',
   loop: 'For example: Furina E D Q > Escoffier E Q > Shenhe hE Q tE? > Skirk tE N5 Q N5 D N3 C N3 W',
+  alternate: 'For example: Furina E D > Escoffier E Q > Shenhe hE Q > Skirk tE N5 Q N5 D N3 C',
 };
+/** How many rotations can take turns. */
+const MAX_ROTATIONS = 6;
+
+/** A box: the Start of fight, or a rotation (0 = A). */
+type Box = 'opener' | number;
 
 export default function RotationScreen(props: Props) {
   const { rotation, onRotationChange, tokenTable, onTokenTableChange, members, built } = props;
   const [confirmClear, setConfirmClear] = useState(false);
 
-  // Name chips add to whichever box was used last (the Loop to begin with).
-  const [box, setBox] = useState<keyof RotationText>('loop');
-  const addName = (name: string) => {
-    const trimmed = rotation[box].trimEnd();
-    const sep = trimmed === '' ? '' : trimmed.endsWith('>') ? ' ' : ' > ';
-    onRotationChange({ ...rotation, [box]: `${trimmed}${sep}${name.split(' (')[0]} ` });
+  // Name chips add to whichever box was used last (Rotation A to begin with).
+  const [box, setBox] = useState<Box>(0);
+  const boxes = rotationBoxes(rotation);
+  const textOf = (b: Box) => (b === 'opener' ? rotation.opener : (boxes[b] ?? ''));
+  const setText = (b: Box, text: string) => {
+    if (b === 'opener') return onRotationChange({ ...rotation, opener: text });
+    if (b === 0) return onRotationChange({ ...rotation, loop: text });
+    const alternates = [...(rotation.alternates ?? [])];
+    alternates[b - 1] = text;
+    onRotationChange({ ...rotation, alternates });
   };
+  const addRotation = () => {
+    onRotationChange({ ...rotation, alternates: [...(rotation.alternates ?? []), ''] });
+    setBox(boxes.length);
+  };
+  const removeRotation = (b: number) => {
+    const alternates = (rotation.alternates ?? []).filter((_, i) => i !== b - 1);
+    onRotationChange({ ...rotation, alternates });
+    setBox(0);
+  };
+  const addName = (name: string) => {
+    const trimmed = textOf(box).trimEnd();
+    const sep = trimmed === '' ? '' : trimmed.endsWith('>') ? ' ' : ' > ';
+    setText(box, `${trimmed}${sep}${name.split(' (')[0]} `);
+  };
+  const boxLabel = (b: Box) => (b === 'opener' ? 'the Start of fight' : boxes.length > 1 ? rotationName(b) : 'the Rotation');
+  const [openerOpen, setOpenerOpen] = useState(!!rotation.opener.trim());
   const turns = built?.translation.turns ?? [];
 
   return (
@@ -47,7 +73,7 @@ export default function RotationScreen(props: Props) {
       <section className="card">
         <div className="card-head">
           <h2>Rotation</h2>
-          {(rotation.opener.trim() || rotation.loop.trim()) && (
+          {(rotation.opener.trim() || boxes.some((b) => b.trim())) && (
             <button className="secondary small-button" onClick={() => (props.clearNeedsConfirm ? setConfirmClear(true) : props.onClear())}>
               Clear current rotation
             </button>
@@ -55,7 +81,7 @@ export default function RotationScreen(props: Props) {
         </div>
         {confirmClear && (
           <Confirm
-            text="Clear the Opener and Loop? Your unsaved changes to this rotation would be lost. The team stays."
+            text="Clear the Start of fight and every rotation? Your unsaved changes to this rotation would be lost. The team stays."
             yes="Clear rotation"
             onYes={() => {
               props.onClear();
@@ -67,12 +93,13 @@ export default function RotationScreen(props: Props) {
         {props.saveBar}
         <p className="muted small">
           One turn per character, separated by <code>&gt;</code> or new lines. Start each turn with the character's name
-          (any word of it is enough), then their moves. The <strong>Opener</strong> runs once at the start; the{' '}
-          <strong>Loop</strong> repeats until the fight ends.
+          (any word of it is enough), then their moves. The <strong>Rotation</strong> repeats until the fight ends. When
+          your rotations differ (for example, someone bursts every other rotation), add an alternate rotation: they take
+          turns, A, B, A, B…
         </p>
         <NotationHelp />
         {members.length > 0 ? (
-          <div className="name-chips" aria-label={`Add a team member's name to the ${box === 'opener' ? 'Opener' : 'Loop'}`}>
+          <div className="name-chips" aria-label={`Add a team member's name to ${boxLabel(box)}`}>
             {members.map((m) => (
               <button key={m.name} type="button" className="chip" onClick={() => addName(m.name)}>
                 + {m.name}
@@ -82,26 +109,53 @@ export default function RotationScreen(props: Props) {
         ) : (
           <p className="warn small">Your team is empty. Add characters above first.</p>
         )}
-        {(['opener', 'loop'] as const).map((section) => (
-          <div key={section} className="rotation-box">
-            <label className="field-label" htmlFor={`rotation-${section}`}>
-              {section === 'opener' ? 'Opener (optional, runs once)' : 'Loop (repeats)'}
-            </label>
-            <textarea
-              id={`rotation-${section}`}
-              className={`config rotation-input${section === 'opener' ? ' short-input' : ''}`}
-              value={rotation[section]}
-              onFocus={() => setBox(section)}
-              onChange={(e) => onRotationChange({ ...rotation, [section]: e.target.value })}
-              spellCheck={false}
-              autoCapitalize="none"
-              autoCorrect="off"
-              placeholder={EXAMPLES[section]}
-              aria-label={section === 'opener' ? 'Opener' : 'Loop'}
-            />
-            <TranslationPreview turns={turns.filter((t) => t.section === section)} checks={(built?.checks ?? []).filter((c) => c.section === section)} />
-          </div>
-        ))}
+        <details className="rotation-box opener-box" open={openerOpen} onToggle={(e) => setOpenerOpen((e.target as HTMLDetailsElement).open)}>
+          <summary className="field-label">Start of fight (optional, runs once){rotation.opener.trim() && !openerOpen ? ': ' + rotation.opener.trim().split('\n')[0] : ''}</summary>
+          <p className="muted small">Moves done only once, before the rotation starts repeating: for example the first round of bursts.</p>
+          <RotationInput
+            id="rotation-opener"
+            label="Start of fight"
+            value={rotation.opener}
+            placeholder={EXAMPLES.opener}
+            short
+            onFocus={() => setBox('opener')}
+            onChange={(t) => setText('opener', t)}
+          />
+          <TranslationPreview turns={turns.filter((t) => t.section === 'opener')} checks={(built?.checks ?? []).filter((c) => c.section === 'opener')} />
+        </details>
+        {boxes.map((text, b) => {
+          const label = boxes.length > 1 ? rotationName(b) : 'Rotation';
+          const loopTurns = turns.filter((t) => t.section === 'loop' && (t.rotation ?? 0) === b);
+          const indexes = new Set(loopTurns.map((t) => t.index));
+          return (
+            <div key={b} className="rotation-box">
+              <div className="rotation-box-head">
+                <label className="field-label" htmlFor={`rotation-${b}`}>
+                  {label} {boxes.length > 1 ? <span className="muted small">(takes turns with the others)</span> : <span className="muted small">(repeats)</span>}
+                </label>
+                {b > 0 && (
+                  <button type="button" className="link small" onClick={() => removeRotation(b)}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <RotationInput
+                id={`rotation-${b}`}
+                label={label}
+                value={text}
+                placeholder={b === 0 ? EXAMPLES.loop : EXAMPLES.alternate}
+                onFocus={() => setBox(b)}
+                onChange={(t) => setText(b, t)}
+              />
+              <TranslationPreview turns={loopTurns} checks={(built?.checks ?? []).filter((c) => c.section === 'loop' && indexes.has(c.index))} />
+            </div>
+          );
+        })}
+        {boxes.length < MAX_ROTATIONS && (
+          <button type="button" className="secondary small-button" onClick={addRotation}>
+            + Add alternate rotation ({rotationName(boxes.length)})
+          </button>
+        )}
       </section>
 
       {props.specials && props.specials.length > 0 && <SpecialCharacters specials={props.specials} checks={built?.checks ?? []} />}
@@ -157,37 +211,76 @@ export default function RotationScreen(props: Props) {
   );
 }
 
+function RotationInput(p: { id: string; label: string; value: string; placeholder: string; short?: boolean; onFocus: () => void; onChange: (text: string) => void }) {
+  return (
+    <textarea
+      id={p.id}
+      className={`config rotation-input${p.short ? ' short-input' : ''}`}
+      value={p.value}
+      onFocus={p.onFocus}
+      onChange={(e) => p.onChange(e.target.value)}
+      spellCheck={false}
+      autoCapitalize="none"
+      autoCorrect="off"
+      placeholder={p.placeholder}
+      aria-label={p.label}
+    />
+  );
+}
+
 function NotationHelp() {
   return (
     <details className="notation-help">
       <summary>Notation guide</summary>
       <table className="table">
         <tbody>
-          <tr><td><code>E</code> <code>tE</code> <code>hE</code></td><td>skill, tap skill, hold skill</td></tr>
+          <tr><td><code>E</code> <code>tE</code> <code>hE</code> <code>fE</code></td><td>skill: tap, tap, hold, full hold</td></tr>
           <tr><td><code>Q</code></td><td>burst</td></tr>
           <tr><td><code>N5</code> <code>C</code> <code>N2C</code></td><td>5 normal attacks, charged attack, 2 normals then a charged</td></tr>
-          <tr><td><code>P</code> <code>lP</code></td><td>high plunge, low plunge</td></tr>
-          <tr><td><code>D</code> <code>J</code> <code>W</code></td><td>dash, jump, walk</td></tr>
-          <tr><td><code>EE</code> <code>E2</code></td><td>skill twice</td></tr>
-          <tr><td><code>Q?</code></td><td>burst <strong>only if ready</strong>, otherwise skip it (skill and burst only)</td></tr>
-          <tr><td><code>Q@1/2</code></td><td>only in loops 1, 3, 5… (<code>@2/2</code> = loops 2, 4, 6…; <code>@1/3</code> = 1, 4, 7…)</td></tr>
-          <tr><td><code>Q@2+</code></td><td>from loop 2 onwards</td></tr>
-          <tr><td><code>Q?|E</code></td><td>burst if ready, <strong>otherwise</strong> skill (combine: <code>Q?@1/2|E</code>)</td></tr>
-          <tr><td><code>Aim</code></td><td>aimed shot (bows; Chasca, Lyney, Sethos…)</td></tr>
-          <tr><td><code>hE(60)</code> <code>hE(2)</code></td><td>options: hold length in frames (Nahida, Navia, Skirk, Jean…) or hold level 2 (Bennett, Yun Jin, Sigewinne)</td></tr>
-          <tr><td><code>C(beams=2)</code> <code>E(recast=1)</code></td><td>any gcsim option by name (Sandrone's beams, Fischl's or Mavuika's recast, Neuvillette's <code>C(ticks=5)</code>…)</td></tr>
-          <tr><td><code>sE</code></td><td>short hold skill: Kirara, Sayu, Dahlia, Traveler (Geo)</td></tr>
-          <tr><td><code>sC</code></td><td>Neuvillette's ordinary (short) Charged Attack</td></tr>
-          <tr><td><code>L</code></td><td>Kinich: Loop Shot until his bar is full (<code>Kinich E L E</code>)</td></tr>
-          <tr><td><code>M</code></td><td>Mualani: keep surfing until 3 Wave Momentum (<code>Mualani E M N</code>)</td></tr>
-          <tr><td><code>! …</code></td><td>a line in gcsim's own language, used exactly as written</td></tr>
+          <tr><td><code>P</code> <code>lP</code></td><td>plunge, low plunge</td></tr>
+          <tr><td><code>D</code> <code>J</code> <code>W</code> <code>Aim</code></td><td>dash, jump, walk, aimed shot</td></tr>
+          <tr><td><code>E2</code> <code>EE</code></td><td>skill twice</td></tr>
+          <tr><td><code>Q?</code></td><td>burst <strong>only if ready</strong>, otherwise skip it</td></tr>
+          <tr><td><code>Q/E</code> <code>Q/N3</code></td><td><code>/</code> means <strong>otherwise</strong>: burst if ready, otherwise skill (or 3 normal attacks)</td></tr>
+          <tr><td><code>Fill</code></td><td>Kinich, Zibai, Mualani: keep going until the special move is ready (<code>Kinich E Fill E</code>, <code>Mualani E Fill N</code>)</td></tr>
         </tbody>
       </table>
       <p className="muted small">
-        Loop 1 is the first loop after the Opener. If none of a turn's moves happen in a loop, the whole turn is skipped,
-        swap included. Careful with moves that depend on a skipped one: in <code>Kazuha tE? P</code>, if the skill is
-        skipped Kazuha isn't in the air, and gcsim stops with "can only be used while airborne".
+        Upper or lower case doesn't matter. The small letter in front says how: <strong>t</strong>ap,{' '}
+        <strong>h</strong>old, <strong>f</strong>ull hold, <strong>s</strong>hort hold, <strong>l</strong>ow. Different
+        moves in different rotations? Use <strong>+ Add alternate rotation</strong>: Rotations A, B… take turns.
       </p>
+      <details>
+        <summary>Holds and character options</summary>
+        <table className="table">
+          <tbody>
+            <tr><td><code>hE(1.5s)</code></td><td>hold for a time (Nahida, Navia, Skirk, Jean, Kirara, Sayu, Lan Yan…). <code>fE</code> is the longest hold; for Bennett, Yun Jin and Sigewinne it's level 2.</td></tr>
+            <tr><td><code>sE</code></td><td>short hold: Kirara, Sayu, Dahlia, Traveler (Geo)</td></tr>
+            <tr><td><code>sC</code></td><td>Neuvillette's ordinary (short) Charged Attack</td></tr>
+            <tr><td><code>hC</code> <code>fC</code></td><td>Nefer's held Charged Attack (Slither), also with a time: <code>hC(1s)</code></td></tr>
+            <tr><td><code>C(beams=2)</code> <code>E(recast=1)</code></td><td>other gcsim options by name: Sandrone's beams, Fischl's or Mavuika's recast, Neuvillette's <code>C(ticks=5)</code>, Yun Jin's <code>E(perfect=1)</code>…</td></tr>
+          </tbody>
+        </table>
+        <p className="muted small">
+          Kinich and Zibai: you can also write exact attacks, like <code>Kinich E N4 E</code>. If the bar isn't full yet
+          when you press E, the app adds attacks until it is, and Results says how often that happened.
+        </p>
+      </details>
+      <details>
+        <summary>Advanced</summary>
+        <table className="table">
+          <tbody>
+            <tr><td><code>! …</code></td><td>a line in gcsim's own language, used exactly as written</td></tr>
+            <tr><td><code>attack:3</code> <code>skill[hold=1]</code></td><td>gcsim actions, used as written</td></tr>
+          </tbody>
+        </table>
+        <p className="muted small">
+          If none of a turn's moves happen (all of them under <code>?</code>), the whole turn is skipped, swap included.
+          Careful with moves that depend on a skipped one: in <code>Kazuha tE? P</code>, if the skill is skipped Kazuha
+          isn't in the air, and gcsim stops with "can only be used while airborne". The codes themselves are in the
+          shorthand table below, which you can edit.
+        </p>
+      </details>
     </details>
   );
 }
@@ -238,7 +331,7 @@ function TranslationPreview({ turns, checks }: { turns: Turn[]; checks: Check[] 
       {turns.map((turn) => (
         <li key={turn.index} className={turn.error ? 'turn bad' : 'turn'}>
           <div className="turn-tokens">
-            <span className="turn-index muted small">{turn.index}</span>
+            <span className="turn-index muted small">{turn.position}</span>
             {turn.raw ? (
               <span className="token">gcsim line</span>
             ) : (

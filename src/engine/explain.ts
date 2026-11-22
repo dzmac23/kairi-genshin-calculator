@@ -7,7 +7,7 @@ const EXPLANATIONS: { pattern: RegExp; text: string }[] = [
     pattern: /need to use attack right before charge/i,
     text: 'This character can only use a Charged Attack straight after a Normal Attack of an unfinished combo (most swords and polearms, and a few others). After the last hit of a full combo, or after another move, write N1C (for example N5 N1C).',
   },
-  { pattern: /Cannot use Scalespiker Cannon with (\d+) Nightsoul points/i, text: "Kinich's cannon needs a full 20-point bar. Write L before the E that fires it: E L E (L = Loop Shot until the bar is full)." },
+  { pattern: /Cannot use Scalespiker Cannon with (\d+) Nightsoul points/i, text: "Kinich's cannon needs a full 20-point bar. Write Fill before the E that fires it (E Fill E). Normally the app adds the Loop Shots by itself; this happens when the cannon is inside a choice like E/N3." },
   { pattern: /cannot use skill in seven-phase flash|skill cannot be used while in seven-phase flash/i, text: "Skirk can't use her skill during Seven-Phase Flash. Leave Flash first (it ends when she swaps out or runs out of Serpent's Subtlety)." },
   { pattern: /player must use low_plunge or high_plunge while airborne/i, text: "After a jump during Xianyun's burst the character is in the air, so the next move must be a plunge (J P)." },
   { pattern: /cannot low_plunge after skill/i, text: "Kazuha's plunge after his skill must be a high plunge: write P, not lP." },
