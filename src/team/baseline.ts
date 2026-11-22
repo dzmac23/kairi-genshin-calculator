@@ -34,10 +34,26 @@ export function snapshotConfig(slot: Slot, data: GameData, withStats: boolean): 
 }
 
 /**
- * gcsim's snapshot as character-screen numbers (percentages as percentages, e.g. 51.0), rounded
- * like the game shows them unless `exact`.
+ * Buffs gcsim has switched on in the snapshot that the character screen doesn't show, so they
+ * aren't part of the typed totals: the snapshot without them, by gcsim character key. gcsim still
+ * applies them during the fight.
  */
-export function statsFromSnapshot(snapshot: number[], element: string, exact = false): Record<TotalKey, number> {
+const NOT_ON_CHARACTER_SCREEN: Record<string, (snapshot: number[]) => number[]> = {
+  // Linnea's passive gives Moonsign party members (and herself) Elemental Mastery equal to 5% of her
+  // DEF. It's a party buff that depends on who is on the field, so the game leaves it out of her
+  // character screen (checked against two players' Linneas: the screen shows only the 2-piece set
+  // bonus and artifacts).
+  linnea: (s) => s.map((v, i) => (i === SNAPSHOT_INDEX.em ? v - 0.05 * s[SNAPSHOT_INDEX.def] : v)),
+};
+
+/**
+ * gcsim's snapshot as character-screen numbers (percentages as percentages, e.g. 51.0), rounded
+ * like the game shows them unless `exact`. `character` is the gcsim key, for buffs the character
+ * screen doesn't show.
+ */
+export function statsFromSnapshot(snapshot: number[], element: string, exact = false, character?: string): Record<TotalKey, number> {
+  const hidden = character ? NOT_ON_CHARACTER_SCREEN[character] : undefined;
+  if (hidden) snapshot = hidden(snapshot);
   const stats = {} as Record<TotalKey, number>;
   for (const { key, percent } of TOTAL_STATS) {
     const index = key === 'elem%' ? ELEMENT_INDEX[element] : SNAPSHOT_INDEX[key];
@@ -64,6 +80,7 @@ function snapshotOf(config: string): Promise<number[]> {
 }
 
 const elementOf = (slot: Slot, data: GameData) => data.character.get(slot.character!)!.element;
+const keyOf = (slot: Slot, data: GameData) => data.character.get(slot.character!)!.gcsim_key ?? undefined;
 
 /** Asks gcsim for a one-character config's snapshot. Tests pass the engine directly. */
 export type Snapshotter = (config: string) => Promise<number[]>;
@@ -71,12 +88,12 @@ export type Snapshotter = (config: string) => Promise<number[]>;
 /** The character's stats with the given artifact stats (in game units: percentages as percentages). */
 async function statsWith(slot: Slot, data: GameData, artifacts: Record<TotalKey, number>, snap: Snapshotter): Promise<Record<TotalKey, number>> {
   const s: Slot = { ...slot, statMode: 'artifacts', artifacts: { ...artifacts, 'atk%': 0, 'hp%': 0, 'def%': 0 } };
-  return statsFromSnapshot(await snap(snapshotConfig(s, data, true)), elementOf(slot, data), true);
+  return statsFromSnapshot(await snap(snapshotConfig(s, data, true)), elementOf(slot, data), true, keyOf(slot, data));
 }
 
 /** The character's stats without artifacts, for this build. */
 export async function getBaseline(slot: Slot, data: GameData, snap: Snapshotter = snapshotOf): Promise<Baseline> {
-  return { key: baselineKey(slot), stats: statsFromSnapshot(await snap(snapshotConfig(slot, data, false)), elementOf(slot, data)) };
+  return { key: baselineKey(slot), stats: statsFromSnapshot(await snap(snapshotConfig(slot, data, false)), elementOf(slot, data), false, keyOf(slot, data)) };
 }
 
 const MAX_ROUNDS = 8;
@@ -108,7 +125,7 @@ export async function solveArtifacts(slot: Slot, data: GameData, baseline: Basel
 /** The totals gcsim works out from the slot's artifact stats (to fill in the totals boxes). */
 export async function totalsFromArtifacts(slot: Slot, data: GameData): Promise<Record<TotalKey, number>> {
   const s: Slot = { ...slot, statMode: 'artifacts' };
-  return statsFromSnapshot(await snapshotOf(snapshotConfig(s, data, true)), elementOf(slot, data));
+  return statsFromSnapshot(await snapshotOf(snapshotConfig(s, data, true)), elementOf(slot, data), false, keyOf(slot, data));
 }
 
 /** The slot can be sent to gcsim on its own: a supported character with a supported weapon. */

@@ -100,6 +100,23 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(result.incomplete_characters).toContain('linnea');
   });
 
+  it.skipIf(!enginePatches.includes('linnea'))("leaves Linnea's party buff (EM from 5% of her DEF) out of her character-screen totals", async () => {
+    // The game's character screen doesn't show it: a player's Linnea in Aubade of Morningstar and
+    // Moon shows DEF 2,272 and Elemental Mastery 122 = 80 (2-piece bonus) + 42 from artifacts.
+    const slot: Slot = {
+      ...placeholderTeam(data)[1],
+      character: 'Linnea',
+      weapon: data.weapons.find((w) => w.gcsim_key === 'favoniuswarbow')!.name,
+      sets: { mode: '4pc', set: data.sets.find((x) => x.gcsim_key === 'aubadeofmorningstarandmoon')!.name },
+    };
+    const engine = async (config: string): Promise<number[]> => JSON.parse(sample(config, '1')).character_details[0].snapshot;
+    const baseline = await getBaseline({ ...slot, statMode: 'totals' }, data, engine);
+    expect(baseline.stats.em).toBe(80);
+    const typed: Slot = { ...slot, statMode: 'totals', totals: { ...baseline.stats, def: 2272, em: 122 } };
+    const solved = await solveArtifacts(typed, data, baseline, engine);
+    expect(solved.solved!.artifacts.em).toBeCloseTo(42, 0);
+  });
+
   it.skipIf(!enginePatches.includes('nefer'))('simulates Nefer from patches/nefer.patch in a Lunar-Bloom team, marked incomplete', () => {
     const team = placeholderTeam(data);
     const catalyst = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
