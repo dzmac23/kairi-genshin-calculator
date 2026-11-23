@@ -34,7 +34,12 @@ export class CancelledError extends Error {
 }
 
 /** A gcsim error about the config (shown to the user as is). */
-export class ConfigError extends Error {}
+export class ConfigError extends Error {
+  /** When a fight failed partway through a run: how many fights had finished by then. */
+  constructor(message: string, readonly after?: { done: number; total: number }) {
+    super(message);
+  }
+}
 
 type RequestBody = WorkerRequest extends infer R ? (R extends WorkerRequest ? Omit<R, 'id'> : never) : never;
 type Success = Extract<WorkerReply, { ok: true }>;
@@ -218,7 +223,11 @@ export class SimPool {
         while (requested < total && !failed) {
           requested++;
           const { summary } = await sim.call({ type: 'simulate' });
+          // Once a fight has failed, fights still finishing on other workers are ignored: reporting
+          // their progress would put a run that has already stopped back on screen as running.
+          if (failed) return;
           await aggregator.call({ type: 'add', summary: summary! }, [summary!.buffer as ArrayBuffer]);
+          if (failed) return;
           done++;
           if (performance.now() - lastUpdate >= LIVE_UPDATE_MS) void liveUpdate().catch(() => {});
           else onProgress({ done, total });
@@ -228,6 +237,9 @@ export class SimPool {
         await Promise.all(sims.flatMap((sim) => Array.from({ length: QUEUE_PER_WORKER }, () => loop(sim))));
       } catch (error) {
         failed = true; // the other loops stop picking up new iterations
+        // Say how far the run got: a fight failing after others succeeded means the rotation only
+        // fails sometimes (usually a burst or skill that isn't always ready in time).
+        if (error instanceof ConfigError && done > 0) throw new ConfigError(error.message, { done, total });
         throw error;
       }
 

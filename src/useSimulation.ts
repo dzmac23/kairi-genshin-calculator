@@ -11,7 +11,13 @@ export type SimState =
   | { phase: 'running'; progress: Progress; startedAt: number }
   | { phase: 'done'; result: SimResult; seconds: number }
   | { phase: 'cancelled'; progress?: Progress }
-  | { phase: 'error'; message: string; isConfigError: boolean };
+  | {
+      phase: 'error';
+      message: string;
+      isConfigError: boolean;
+      /** Set when a fight failed partway through: how many fights had finished by then. */
+      after?: { done: number; total: number };
+    };
 
 /** What a run was made from, saved with it in the History (see history/model.ts). */
 export type RunMeta = {
@@ -64,12 +70,16 @@ export function useSimulation() {
     setState({ phase: 'starting' });
     lastProgress.current = undefined;
     let startedAt = 0;
+    // Progress that arrives after the run has ended (stopped by an error) must not show it as running.
+    let settled = false;
     try {
       const result = await pool.run(config, (progress) => {
+        if (settled) return;
         if (!startedAt) startedAt = performance.now();
         lastProgress.current = progress;
         setState({ phase: 'running', progress, startedAt });
       });
+      settled = true;
       const seconds = (performance.now() - startedAt) / 1000;
       setState({ phase: 'done', result, seconds });
       const finishedAt = new Date();
@@ -95,6 +105,7 @@ export function useSimulation() {
           .catch(() => update('failed'));
       }
     } catch (error) {
+      settled = true;
       if (error instanceof CancelledError) {
         setState({ phase: 'cancelled', progress: lastProgress.current });
       } else {
@@ -102,6 +113,7 @@ export function useSimulation() {
           phase: 'error',
           message: error instanceof Error ? error.message : String(error),
           isConfigError: error instanceof ConfigError,
+          after: error instanceof ConfigError ? error.after : undefined,
         });
       }
     }

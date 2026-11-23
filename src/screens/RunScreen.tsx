@@ -387,8 +387,23 @@ function Status({ state, now, onShowResults }: { state: SimState; now: number; o
     case 'error':
       return (
         <div className="status error">
-          <strong>{state.isConfigError ? 'gcsim found a problem with the config:' : 'Something went wrong:'}</strong>
+          <strong>
+            {state.after
+              ? `The run stopped: one fight failed (after ${state.after.done} of ${state.after.total} had finished).`
+              : state.isConfigError
+                ? 'gcsim found a problem with the config:'
+                : 'Something went wrong:'}
+          </strong>
           <p>{state.message}</p>
+          {state.after && (
+            <p className="small explain">
+              <strong>It only happens in some fights.</strong> Fights differ a little (crits, energy particles), so a move
+              that depends on something being ready in time works in most fights but not all. Most often a burst isn't
+              always ready: gcsim waits for the energy, and the moves after it come too late (for example after
+              Xianyun's burst has ended). Write that burst as <code>Q?</code> (only if ready), give the character more
+              Energy Recharge (see Energy Recharge targets on the Setup screen), or shorten what depends on it.
+            </p>
+          )}
           {explainGcsimError(state.message) && (
             <p className="small explain">
               <strong>What this means:</strong> {explainGcsimError(state.message)}
@@ -434,7 +449,7 @@ function Status({ state, now, onShowResults }: { state: SimState; now: number; o
           <button className="secondary wide" onClick={onShowResults}>
             See full results
           </button>
-          <p className="muted small">Saved to History.</p>
+          <p className="muted small">Saved to Run History.</p>
         </div>
       );
     }
