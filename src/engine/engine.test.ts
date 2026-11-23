@@ -219,6 +219,19 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(result.statistics.character_dps[0].mean).toBeGreaterThan(0);
   });
 
+  it("runs Mavuika's Finisher (F) at the end of her bike Charged Attacks", () => {
+    const team = placeholderTeam(data);
+    const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
+    team[0] = { ...team[0], character: 'Mavuika', weapon: weapon('wolfsgravestone'), sets: { mode: 'none' } };
+    const built = buildConfig(team, data, { opener: '', loop: 'Mavuika hE C3 F > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q' }, table, DEFAULT_SETTINGS, 1);
+    expect(built.problems).toEqual([]);
+    expect(built.checks).toEqual([]);
+    const out = JSON.parse(sample(built.config!, '1'));
+    expect(out.error).toBeUndefined();
+    const hits = out.logs.filter((l: { event: string }) => l.event === 'damage').map((l: { msg: string }) => l.msg);
+    expect(hits).toContain('Flamestrider Charged Attack (Final)');
+  });
+
   it('runs the special-character codes: Kinich E L E fires the cannon, Mualani E M N lands the Surging Bite', () => {
     const team = placeholderTeam(data);
     const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
