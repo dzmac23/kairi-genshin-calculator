@@ -76,6 +76,17 @@ export function checkRotation(translation: Translation, team: CheckMember[], rul
         if (!move.conditional && current.state.attacks !== null) current.state.attacks += move.count - 1;
       }
     }
+    // Mavuika's dash cancel needs a Charged Attack on both sides (C Dx C); otherwise gcsim dashes plainly.
+    if (member.key === 'mavuika') {
+      turn.moves.forEach((m, j) => {
+        if (m.action !== 'dash' || !(m.params.charge_cancel > 0) || m.conditional) return;
+        if (turn.moves![j - 1]?.action === 'charge' && turn.moves![j + 1]?.action === 'charge') return;
+        const message = `Dx (dash cancel) only cancels between two of Mavuika's bike Charged Attacks (C Dx C); here gcsim does a plain dash.`;
+        if (!checks.some((c) => c.section === turn.section && c.index === turn.index && c.message === message)) {
+          checks.push({ section: turn.section, index: turn.index, level: 'tip', character: member.name, message });
+        }
+      });
+    }
     // Look ahead: the next turn that acts (skipping "!" lines) decides whether this was a swap.
     if (i === turns.length - 1 || turns.slice(i + 1).every((t) => t.raw)) {
       const firstLoop = turns.find((t) => t.section === 'loop' && !t.raw);
@@ -172,6 +183,8 @@ function applyMove(ctx: Ctx, state: State, move: Move) {
         const now = state.flags.get('bike');
         const recast = (move.params.recast ?? 0) > 0;
         state.flags.set('bike', move.conditional ? null : recast ? (typeof now === 'boolean' ? !now : null) : held);
+      } else if (a === 'dash' && (move.params.charge_cancel ?? 0) > 0 && state.flags.get('bike') === false && !move.conditional) {
+        add('tip', `Dx (dash cancel) only exists on Mavuika's bike (after hE); here she's on her ring, so it's a plain dash.`);
       } else if (a === 'charge' && (move.params.final ?? 0) > 0 && state.flags.get('bike') === false && !move.conditional) {
         add('tip', `F (Finisher) only exists on Mavuika's bike (after hE); here she's on her ring, so it's an ordinary Charged Attack.`);
       }
