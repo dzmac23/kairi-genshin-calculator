@@ -1,6 +1,7 @@
 import { engineUrl } from './pool';
 
-export type EngineVersion = { gcsimTag: string; gcsimCommit: string; goVersion: string };
+/** patches: the patches/ files the engine was built with (scripts/build-gcsim.sh). */
+export type EngineVersion = { gcsimTag: string; gcsimCommit: string; goVersion: string; patches?: string[] };
 
 let loading: Promise<EngineVersion | undefined> | undefined;
 

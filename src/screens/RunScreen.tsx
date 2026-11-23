@@ -5,6 +5,7 @@ import { ENEMY_ELEMENTS, elementName, enemySummary, resistPercent, type Enemy } 
 import type { BuildResult } from '../config/build';
 import type { Check } from '../rotation/checks';
 import { turnLabel } from '../rotation/notation';
+import { ProblemActions } from '../problems/ProblemActions';
 import { MAX_ENEMIES, parseHp, type SimSettings } from '../config/settings';
 import { setIterations } from '../engine/config';
 import { workerCount } from '../engine/pool';
@@ -20,6 +21,8 @@ const ITERATION_CHOICES = [
 ];
 
 export type RunSource = 'team' | 'paste';
+
+export type DiagnosisState = { status: 'checking'; done: number; total: number } | { status: 'done'; verdict: string } | { status: 'failed' };
 
 type Props = {
   state: SimState;
@@ -45,6 +48,8 @@ type Props = {
   label: string;
   onLabelChange: (label: string) => void;
   onRun: (config: string, notes: string[]) => void;
+  /** The automatic check of why a run failed partway (problems/diagnose.ts). */
+  diagnosis?: DiagnosisState;
   onCancel: () => void;
   onShowResults: () => void;
   onGoToSetup: () => void;
@@ -213,7 +218,7 @@ export default function RunScreen(props: Props) {
             {runConfig ? `Run ${iterations} iterations` : source === 'team' ? 'Fix the items above to run' : 'Add a config to run'}
           </button>
         )}
-        <Status state={state} now={now} onShowResults={onShowResults} />
+        <Status state={state} now={now} onShowResults={onShowResults} diagnosis={props.diagnosis} />
       </section>
     </>
   );
@@ -359,7 +364,7 @@ function TeamSource({ built, onGoToSetup }: { built?: BuildResult; onGoToSetup: 
   );
 }
 
-function Status({ state, now, onShowResults }: { state: SimState; now: number; onShowResults: () => void }) {
+function Status({ state, now, onShowResults, diagnosis }: { state: SimState; now: number; onShowResults: () => void; diagnosis?: DiagnosisState }) {
   switch (state.phase) {
     case 'idle':
       return null;
@@ -409,6 +414,22 @@ function Status({ state, now, onShowResults }: { state: SimState; now: number; o
               <strong>What this means:</strong> {explainGcsimError(state.message)}
             </p>
           )}
+          {state.after && diagnosis && (
+            <div className="diagnosis">
+              {diagnosis.status === 'checking' && (
+                <p className="small">
+                  <strong>Finding out why…</strong> testing changes to the rotation on this device ({diagnosis.done} of {diagnosis.total} checks done).
+                </p>
+              )}
+              {diagnosis.status === 'done' && (
+                <p className="small">
+                  <strong>Why:</strong> {diagnosis.verdict}
+                </p>
+              )}
+              {diagnosis.status === 'failed' && <p className="small muted">The automatic check couldn't finish.</p>}
+            </div>
+          )}
+          <ProblemActions id={state.problemId} />
         </div>
       );
     case 'done': {

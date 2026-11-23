@@ -29,7 +29,11 @@ import { emptySlot } from './team/model';
 import { useBaselines } from './team/useBaselines';
 import { useTeam } from './team/useTeam';
 import { usePersistentState } from './usePersistentState';
-import { useSimulation, type FinishedRun } from './useSimulation';
+import { stripBaselines, useSimulation, type FinishedRun } from './useSimulation';
+import { setProblemContext, updateProblem } from './problems/log';
+import { diagnoseRun } from './problems/diagnose';
+import { tryFights } from './engine/pool';
+import type { DiagnosisState } from './screens/RunScreen';
 
 const screens = ['Home', 'Setup', 'Run', 'Results', 'Library'] as const;
 type Screen = (typeof screens)[number];
@@ -329,6 +333,35 @@ export default function App() {
     setScreen('Setup');
   };
 
+  // When a run fails partway (some fights worked), the app works out why, offline (problems/diagnose.ts).
+  const runInput = useRef<{ team: typeof team; rotation: RotationText; settings: ReturnType<typeof cleanSettings> } | undefined>(undefined);
+  const [diagnosis, setDiagnosis] = useState<DiagnosisState>();
+  const failure = simulation.state.phase === 'error' && simulation.state.after ? simulation.state : undefined;
+  const failureKey = failure ? `${failure.message}|${failure.after!.done}` : undefined;
+  useEffect(() => {
+    const input = runInput.current;
+    if (!failureKey || !input || !data) return;
+    let alive = true;
+    setDiagnosis({ status: 'checking', done: 0, total: 1 });
+    diagnoseRun({ ...input, data, table: parsedTable }, tryFights, (done, total) => alive && setDiagnosis({ status: 'checking', done, total }))
+      .then((d) => alive && setDiagnosis({ status: 'done', verdict: d.verdict }))
+      .catch(() => alive && setDiagnosis({ status: 'failed' }));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [failureKey]);
+  // The answer goes into the problem report too.
+  const problemId = failure?.problemId;
+  useEffect(() => {
+    if (problemId && diagnosis?.status === 'done') void updateProblem(problemId, { diagnosis: diagnosis.verdict });
+  }, [problemId, diagnosis]);
+
+  // What problem reports record about the moment (problems/log.ts).
+  const [gcsimTag, setGcsimTag] = useState<string>();
+  useEffect(() => void getEngineVersion().then((v) => setGcsimTag(v ? `${v.gcsimTag}${v.patches?.length ? ` + ${v.patches.join(', ')}` : ''}` : undefined)), []);
+  setProblemContext(() => ({ screen, gcsim: gcsimTag, setup: { team: stripBaselines(team), rotation, settings: cleanSettings(settings) } }));
+
   // Shows a button when a new version of the app has been downloaded in the background.
   const {
     needRefresh: [needRefresh],
@@ -466,8 +499,11 @@ export default function App() {
             onLabelChange={setRunLabel}
             iterations={iterations}
             onIterationsChange={setIterations}
-            onRun={(runConfig, notes) =>
-              simulation.run(
+            onRun={(runConfig, notes) => {
+              // Kept for the automatic check if a fight fails partway (problems/diagnose.ts).
+              runInput.current = source === 'team' ? { team: structuredClone(team), rotation, settings: cleanSettings(settings) } : undefined;
+              setDiagnosis(undefined);
+              void simulation.run(
                 runConfig,
                 notes,
                 // Rotation timing needs the turn markers, so only Team + Rotation runs get it.
@@ -490,8 +526,9 @@ export default function App() {
                       ...savedNames(activeTeam, active, team, rotation),
                     }
                   : { source, label: runLabel },
-              )
-            }
+              );
+            }}
+            diagnosis={diagnosis}
             onCancel={simulation.cancel}
             onShowResults={() => setScreen('Results')}
           />
