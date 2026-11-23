@@ -266,10 +266,10 @@
   },
   "mavuika": {
    "special": "Tap skill is the ring, hold is the bike; recast switches; the bike changes her attacks; burst needs 100 Fighting Spirit.",
-   "howTo": "tE / hE · recast: E(recast=1) · bike Charged Attacks: C3 F (F = Finisher), with dash cancels C Dx C Dx C F · Q",
+   "howTo": "tE / hE · recast: E(recast=1) · bike Charged Attacks: C3 F (F = Finisher), with dash cancels C D C D C F · Q",
    "watch": [
     "On the bike, a Charged Attack chain ends with the Finisher: write F to do it right away (C3 F). Stopping the chain any other way plays it by itself a moment later.",
-    "Between bike Charged Attacks, Dx is the dash cancel (C Dx C F) and D a plain dash (C D C F): write the one you mean.",
+    "On the bike, a D between two Charged Attacks is the dash cancel (C D C). For a plain dash there instead, write D(charge_cancel=0).",
     "F off the bike (on her ring) is an ordinary Charged Attack.",
     "Plunge only after a bike jump (W J P) or with Xianyun.",
     "Burst waits for 100 Fighting Spirit."

@@ -81,7 +81,7 @@ export function checkRotation(translation: Translation, team: CheckMember[], rul
       turn.moves.forEach((m, j) => {
         if (m.action !== 'dash' || !(m.params.charge_cancel > 0) || m.conditional) return;
         if (turn.moves![j - 1]?.action === 'charge' && turn.moves![j + 1]?.action === 'charge') return;
-        const message = `Dx (dash cancel) only cancels between two of Mavuika's bike Charged Attacks (C Dx C); here gcsim does a plain dash.`;
+        const message = `Dx (dash cancel) only cancels between two of Mavuika's bike Charged Attacks (C D C or C Dx C); here gcsim does a plain dash.`;
         if (!checks.some((c) => c.section === turn.section && c.index === turn.index && c.message === message)) {
           checks.push({ section: turn.section, index: turn.index, level: 'tip', character: member.name, message });
         }

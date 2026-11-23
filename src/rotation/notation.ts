@@ -371,6 +371,12 @@ function translateTurn(
   let plain: string[] = [];
   const topUp = member.key ? TOP_UP[member.key] : undefined;
   const flush = () => {
+    // Mavuika: a D written between two Charged Attacks is the dash cancel players mean on her bike
+    // (gcsim's charge-cancelled dash). Only a dash that is written changes; off the bike gcsim
+    // ignores the option. A plain dash there is D(charge_cancel=0).
+    if (member.key === 'mavuika') {
+      plain = plain.map((a, j) => (a === 'dash' && /^charge\b/.test(plain[j - 1] ?? '') && /^charge\b/.test(plain[j + 1] ?? '') ? 'dash[charge_cancel=1]' : a));
+    }
     plain.forEach((a, j) => {
       // Kinich, Zibai: attack until the bar is full before each skill (does nothing otherwise).
       // Not straight after Fill, which already filled it.

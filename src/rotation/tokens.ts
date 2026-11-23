@@ -52,7 +52,8 @@ Nefer: hC = charge[hold=1]
 Nefer: fC = charge[hold=150]
 # Mavuika's Finisher: ends her bike Charged Attack chain (Mavuika hE C3 F).
 Mavuika: F = charge[final=1]
-# Mavuika's dash cancel between bike Charged Attacks (C Dx C); D stays a plain dash.
+# Mavuika's dash cancel: a D between two Charged Attacks (C D C) already is one; Dx says so
+# explicitly. A plain dash there is D(charge_cancel=0).
 Mavuika: Dx = dash[charge_cancel=1]
 # Fill: keep going until the special move is ready. A "!" action is a gcsim statement; {key} is the
 # character's gcsim name.

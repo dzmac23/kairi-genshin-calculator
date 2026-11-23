@@ -223,8 +223,8 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     const team = placeholderTeam(data);
     const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;
     team[0] = { ...team[0], character: 'Mavuika', weapon: weapon('wolfsgravestone'), sets: { mode: 'none' } };
-    // Also with plain dashes (D) and dash cancels (Dx) between the Charged Attacks.
-    for (const combo of ['C3 F', 'C D C D C F', 'C Dx C Dx C F']) {
+    // Also with dash cancels (D between Charged Attacks), and a plain dash kept on purpose.
+    for (const combo of ['C3 F', 'C D C D C F', 'C D(charge_cancel=0) C F']) {
       const built = buildConfig(team, data, { opener: '', loop: `Mavuika hE ${combo} > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q` }, table, DEFAULT_SETTINGS, 1);
       expect(built.problems).toEqual([]);
       expect(built.checks).toEqual([]);

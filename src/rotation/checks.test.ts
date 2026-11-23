@@ -99,8 +99,8 @@ describe('special characters', () => {
     expect(levels(check('Mavuika tE C F', team))).toEqual(['tip']);
     expect(check('Mavuika tE E(recast=1) C F', team)).toEqual([]); // the recast switches to the bike
     expect(check('Mavuika hE > Bennett E > Mavuika C3 F', team)).toEqual([]);
-    // Dx: the dash cancel only between two bike Charged Attacks.
-    expect(check('Mavuika hE C Dx C Dx C F', team)).toEqual([]);
+    // The dash cancel only between two bike Charged Attacks.
+    expect(check('Mavuika hE C D C Dx C F', team)).toEqual([]);
     expect(levels(check('Mavuika hE Dx C F', team))).toEqual(['tip']);
     expect(levels(check('Mavuika hE C Dx', team))).toEqual(['tip']);
     expect(check('Mavuika tE C Dx C', team).map((c) => c.message)).toEqual([expect.stringMatching(/she's on her ring, so it's a plain dash/)]);
@@ -170,11 +170,15 @@ describe('shorthand: options and statement codes', () => {
     expect(turn('Mavuika hE C3 F', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], charge:3, charge[final=1];']);
     expect(turn('mavuika he n2cf', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], attack:2, charge, charge[final=1];']);
     expect(turn('Bennett F', ['Bennett']).error).toMatch(/not in the shorthand table/);
-    // Dx is her dash cancel; D stays a plain dash.
-    expect(turn('Mavuika hE C Dx C D C F', ['Mavuika']).statements).toEqual([
-      'mavuika skill[hold=1], charge, dash[charge_cancel=1], charge, dash, charge, charge[final=1];',
+    // A D between two Charged Attacks is her dash cancel (Dx says so explicitly); elsewhere D is a
+    // plain dash, and D(charge_cancel=0) keeps a plain dash between Charged Attacks.
+    expect(turn('Mavuika hE C D C2 Dx C F', ['Mavuika']).statements).toEqual([
+      'mavuika skill[hold=1], charge, dash[charge_cancel=1], charge:2, dash[charge_cancel=1], charge, charge[final=1];',
     ]);
-    expect(turn('mavuika he cdxc', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], charge, dash[charge_cancel=1], charge;']);
+    expect(turn('Mavuika hE D C F D', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], dash, charge, charge[final=1], dash;']);
+    expect(turn('Mavuika hE C D(charge_cancel=0) C', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], charge, dash[charge_cancel=0], charge;']);
+    expect(turn('mavuika he cdc', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], charge, dash[charge_cancel=1], charge;']);
+    expect(turn('Furina C D C', ['Furina']).statements).toEqual(['furina charge, dash, charge;']); // only Mavuika
     expect(turn('Bennett Dx', ['Bennett']).error).toMatch(/not in the shorthand table/);
     // Options with an underscore are still options on a shorthand code, not gcsim text.
     expect(turn('Mavuika hE C D(charge_cancel=1) C F', ['Mavuika']).statements).toEqual([
