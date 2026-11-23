@@ -119,8 +119,14 @@ function aliasMap(team: TeamMember[]): Map<string, TeamMember> {
   return map;
 }
 
-/** Tokens that can only be gcsim: "attack:3", "skill[hold=1]", "low_plunge". */
-const isGcsimSyntax = (token: string) => token.includes(':') || token.includes('[') || token.includes('_');
+/**
+ * Tokens that can only be gcsim: "attack:3", "skill[hold=1]", "low_plunge". Options in brackets
+ * don't count: D(charge_cancel=1) is the shorthand D with an option.
+ */
+const isGcsimSyntax = (token: string) => {
+  const outside = token.replace(/\([^)]*\)/g, '');
+  return outside.includes(':') || outside.includes('[') || outside.includes('_');
+};
 /** Plain words of 4+ letters that aren't shorthand are gcsim actions too: "burst", "dash". */
 const isGcsimWord = (token: string) => /^[a-z]{4,}$/.test(token);
 
@@ -365,6 +371,12 @@ function translateTurn(
   let plain: string[] = [];
   const topUp = member.key ? TOP_UP[member.key] : undefined;
   const flush = () => {
+    // Mavuika: a D written between two Charged Attacks is the dash cancel players mean on her bike
+    // (gcsim's charge-cancelled dash). Only a dash that is written changes; off the bike gcsim
+    // ignores the option. A plain dash there is D(charge_cancel=0).
+    if (member.key === 'mavuika') {
+      plain = plain.map((a, j) => (a === 'dash' && /^charge\b/.test(plain[j - 1] ?? '') && /^charge\b/.test(plain[j + 1] ?? '') ? 'dash[charge_cancel=1]' : a));
+    }
     plain.forEach((a, j) => {
       // Kinich, Zibai: attack until the bar is full before each skill (does nothing otherwise).
       // Not straight after Fill, which already filled it.

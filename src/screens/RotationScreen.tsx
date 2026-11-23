@@ -258,7 +258,7 @@ function NotationHelp() {
             <tr><td><code>sE</code></td><td>short hold: Kirara, Sayu, Dahlia, Traveler (Geo)</td></tr>
             <tr><td><code>sC</code></td><td>Neuvillette's ordinary (short) Charged Attack</td></tr>
             <tr><td><code>hC</code> <code>fC</code></td><td>Nefer's held Charged Attack (Slither), also with a time: <code>hC(1s)</code></td></tr>
-            <tr><td><code>F</code></td><td>Mavuika's Finisher: ends her bike Charged Attack chain (<code>Mavuika hE C3 F</code>). Stopping the chain without it also ends in the Finisher, a moment later.</td></tr>
+            <tr><td><code>F</code></td><td>Mavuika's Finisher: ends her bike Charged Attack chain (<code>Mavuika hE C3 F</code>). Stopping the chain without it also ends in the Finisher, a moment later. A <code>D</code> between her bike Charged Attacks is the dash cancel: <code>Mavuika hE C D C D C F</code>.</td></tr>
             <tr><td><code>C(beams=2)</code> <code>E(recast=1)</code></td><td>other gcsim options by name: Sandrone's beams, Fischl's or Mavuika's recast, Neuvillette's <code>C(ticks=5)</code>, Yun Jin's <code>E(perfect=1)</code>…</td></tr>
           </tbody>
         </table>
@@ -273,6 +273,7 @@ function NotationHelp() {
           <tbody>
             <tr><td><code>! …</code></td><td>a line in gcsim's own language, used exactly as written</td></tr>
             <tr><td><code>attack:3</code> <code>skill[hold=1]</code></td><td>gcsim actions, used as written</td></tr>
+            <tr><td><code>D(charge_cancel=0)</code></td><td>Mavuika: a plain dash between bike Charged Attacks, instead of the dash cancel</td></tr>
           </tbody>
         </table>
         <p className="muted small">
