@@ -10006,7 +10006,7 @@
     "16%"
    ]
   ],
-  "gcsim_key": null,
+  "gcsim_key": "hymnofthemaelstrom",
   "stats": [
    {
     "level": "1",
@@ -10078,7 +10078,8 @@
     "base_atk": 541.829758,
     "substat_value": 0.661536
    }
-  ]
+  ],
+  "gcsim_patch": "hymn"
  },
  {
   "name": "Ibis Piercer",

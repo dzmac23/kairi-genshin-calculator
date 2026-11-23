@@ -10,7 +10,8 @@ in every result (gcsim has no such flag for weapons).
 | --- | --- | --- |
 | `linnea.patch` | Linnea | [genshinsim/gcsim#2596](https://github.com/genshinsim/gcsim/pull/2596) at 0e439a5, plus three timing fixes (see the top of the file) |
 | `nefer.patch` | Nefer | [genshinsim/gcsim#3045](https://github.com/genshinsim/gcsim/pull/3045) at 4932d0e, moved onto v2.50.0 after `linnea.patch`, plus fixes: plunge removed, N4 length, burst energy timing, burst Veil bonus, no Slither movement, marked incomplete (see the top of the file) |
-| `starsealed.patch` | Starsealed Edict (5★ catalyst) | [genshinsim/gcsim#3279](https://github.com/genshinsim/gcsim/pull/3279) at 2b3320f (based on v2.50.0): only the weapon, without three unrelated gcsim fixes on that branch (see the top of the file) |
+| `hymn.patch` | Hymn of the Maelstrom (5★ catalyst) | [genshinsim/gcsim#3282](https://github.com/genshinsim/gcsim/pull/3282) at fbea026 (based on gcsim main after #3279): only the weapon, plus a fix: its Max HP and ATK buffs shared one stat array, so each also added the other's bonus (see the top of the file) |
+| `starsealed.patch` | Starsealed Edict (5★ catalyst) | [genshinsim/gcsim#3279](https://github.com/genshinsim/gcsim/pull/3279) at 2b3320f (based on v2.50.0): only the weapon, without three unrelated gcsim fixes on that branch (see the top of the file). **Merged into gcsim main on 2026-11-20**: delete this patch when moving to the next gcsim release |
 | `vodyanitsa.patch` | Vodyanitsa | [genshinsim/gcsim#3274](https://github.com/genshinsim/gcsim/pull/3274) by a gcsim maintainer, at 5fb8aa6 (based on v2.50.0), applied after `nefer.patch`, plus: its Stellar Swirl timing change only in teams with her (other teams unchanged), marked incomplete (see the top of the file) |
 
 ### Engine additions
