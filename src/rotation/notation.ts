@@ -119,8 +119,14 @@ function aliasMap(team: TeamMember[]): Map<string, TeamMember> {
   return map;
 }
 
-/** Tokens that can only be gcsim: "attack:3", "skill[hold=1]", "low_plunge". */
-const isGcsimSyntax = (token: string) => token.includes(':') || token.includes('[') || token.includes('_');
+/**
+ * Tokens that can only be gcsim: "attack:3", "skill[hold=1]", "low_plunge". Options in brackets
+ * don't count: D(charge_cancel=1) is the shorthand D with an option.
+ */
+const isGcsimSyntax = (token: string) => {
+  const outside = token.replace(/\([^)]*\)/g, '');
+  return outside.includes(':') || outside.includes('[') || outside.includes('_');
+};
 /** Plain words of 4+ letters that aren't shorthand are gcsim actions too: "burst", "dash". */
 const isGcsimWord = (token: string) => /^[a-z]{4,}$/.test(token);
 

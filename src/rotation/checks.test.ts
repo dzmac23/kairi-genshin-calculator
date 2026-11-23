@@ -165,6 +165,11 @@ describe('shorthand: options and statement codes', () => {
     expect(turn('Mavuika hE C3 F', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], charge:3, charge[final=1];']);
     expect(turn('mavuika he n2cf', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], attack:2, charge, charge[final=1];']);
     expect(turn('Bennett F', ['Bennett']).error).toMatch(/not in the shorthand table/);
+    // Options with an underscore are still options on a shorthand code, not gcsim text.
+    expect(turn('Mavuika hE C D(charge_cancel=1) C F', ['Mavuika']).statements).toEqual([
+      'mavuika skill[hold=1], charge, dash[charge_cancel=1], charge, charge[final=1];',
+    ]);
+    expect(turn('Kirara E(short_hold=1)', ['Kirara']).statements).toEqual(['kirara skill[short_hold=1];']);
   });
   it('reads "/" as otherwise, with any moves after it', () => {
     expect(turn('Bennett Q/N3', ['Bennett']).statements).toEqual(['if .bennett.burst.ready { bennett burst; } else { bennett attack:3; }']);
