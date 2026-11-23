@@ -93,6 +93,14 @@ describe('special characters', () => {
     expect(levels(check('Bennett E > Chasca E Aim', team))).toEqual(['wait']);
   });
 
+  it("Mavuika: F (Finisher) only on her bike; after a swap the app doesn't guess", () => {
+    const team = ['Mavuika', 'Bennett'];
+    expect(check('Mavuika hE C3 F', team)).toEqual([]);
+    expect(levels(check('Mavuika tE C F', team))).toEqual(['tip']);
+    expect(check('Mavuika tE E(recast=1) C F', team)).toEqual([]); // the recast switches to the bike
+    expect(check('Mavuika hE > Bennett E > Mavuika C3 F', team)).toEqual([]);
+  });
+
   it('Mizuki, Neuvillette, Sandrone, Jean, Kirara, Lyney and Xilonen rules', () => {
     expect(levels(check('Mizuki E N', ['Yumemizuki Mizuki', 'Bennett']))).toEqual(['wait']);
     expect(levels(check('Neuvillette C(ticks=5) N', ['Neuvillette', 'Bennett']))).toEqual(['stop']);
@@ -152,6 +160,11 @@ describe('shorthand: options and statement codes', () => {
     expect(turn('Kazuha hE(1s)', ['Kaedehara Kazuha']).error).toMatch(/only one length/);
     expect(turn('Nahida hE(9s)', ['Nahida']).error).toMatch(/longest hold gcsim allows here is 5 s/);
     expect(turn('Raiden e q n5 n2c d j w aim', ['Raiden Shogun']).statements).toEqual(['raidenshogun skill, burst, attack:5, attack:2, charge, dash, jump, walk, aim;']);
+  });
+  it("writes Mavuika's Finisher as F, only for her", () => {
+    expect(turn('Mavuika hE C3 F', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], charge:3, charge[final=1];']);
+    expect(turn('mavuika he n2cf', ['Mavuika']).statements).toEqual(['mavuika skill[hold=1], attack:2, charge, charge[final=1];']);
+    expect(turn('Bennett F', ['Bennett']).error).toMatch(/not in the shorthand table/);
   });
   it('reads "/" as otherwise, with any moves after it', () => {
     expect(turn('Bennett Q/N3', ['Bennett']).statements).toEqual(['if .bennett.burst.ready { bennett burst; } else { bennett attack:3; }']);

@@ -165,6 +165,17 @@ function applyMove(ctx: Ctx, state: State, move: Move) {
 
   // --- Character rules ---
   switch (key) {
+    case 'mavuika':
+      // Hold skill = the bike, tap = the ring; a recast switches between them.
+      // Not knowing (after a swap, a ? move or a recast from an unknown form) gives no tip.
+      if (isSkill) {
+        const now = state.flags.get('bike');
+        const recast = (move.params.recast ?? 0) > 0;
+        state.flags.set('bike', move.conditional ? null : recast ? (typeof now === 'boolean' ? !now : null) : held);
+      } else if (a === 'charge' && (move.params.final ?? 0) > 0 && state.flags.get('bike') === false && !move.conditional) {
+        add('tip', `F (Finisher) only exists on Mavuika's bike (after hE); here she's on her ring, so it's an ordinary Charged Attack.`);
+      }
+      break;
     case 'skirk':
       if (isSkill) {
         if (flag('flash') === true && !move.conditional) add('stop', `Skirk can't use her skill during Seven-Phase Flash: gcsim stops the run. Leave Flash first (it ends when she swaps out or runs out of Serpent's Subtlety).`);

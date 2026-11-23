@@ -266,8 +266,10 @@
   },
   "mavuika": {
    "special": "Tap skill is the ring, hold is the bike; recast switches; the bike changes her attacks; burst needs 100 Fighting Spirit.",
-   "howTo": "tE / hE · recast: E(recast=1) · Q",
+   "howTo": "tE / hE · recast: E(recast=1) · bike Charged Attacks: C3 F (F = Finisher) · Q",
    "watch": [
+    "On the bike, a Charged Attack chain ends with the Finisher: write F to do it right away (C3 F). Stopping the chain any other way plays it by itself a moment later.",
+    "F off the bike (on her ring) is an ordinary Charged Attack.",
     "Plunge only after a bike jump (W J P) or with Xianyun.",
     "Burst waits for 100 Fighting Spirit."
    ],
