@@ -3,12 +3,12 @@ import { fileName, type TransferFile } from '../transfer';
 // Saving and sharing export files. "Download" saves a .json file; "Share" opens the device's share
 // sheet (WhatsApp, Drive, email…) where the browser supports sharing files (mostly phones).
 
-function jsonFile(name: string, text: string): File {
-  return new File([text], name, { type: 'application/json' });
+function jsonFile(name: string, text: string, type = 'application/json'): File {
+  return new File([text], name, { type });
 }
 
-export function downloadFile(name: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+export function downloadFile(name: string, text: string, type = 'application/json'): void {
+  const url = URL.createObjectURL(new Blob([text], { type }));
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
@@ -27,9 +27,9 @@ export function canShareFiles(): boolean {
 }
 
 /** Opens the share sheet. Resolves false if the person cancelled or sharing failed. */
-export async function shareFile(name: string, text: string): Promise<boolean> {
+export async function shareFile(name: string, text: string, type = 'application/json'): Promise<boolean> {
   try {
-    await navigator.share({ files: [jsonFile(name, text)], title: name });
+    await navigator.share({ files: [jsonFile(name, text, type)], title: name });
     return true;
   } catch {
     return false;
@@ -52,4 +52,34 @@ export async function deliverFile(file: TransferFile, share: boolean): Promise<s
   if (share || (isIosHomeScreenApp() && canShareFiles())) return (await shareFile(name, text)) ? 'Shared.' : '';
   downloadFile(name, text);
   return `Saved ${name}.`;
+}
+
+/** Saves (or shares) a plain-text file, such as a problem report. Returns a short message for the screen. */
+export async function deliverText(name: string, text: string, share: boolean): Promise<string> {
+  if (share || (isIosHomeScreenApp() && canShareFiles())) return (await shareFile(name, text, 'text/plain')) ? 'Shared.' : '';
+  downloadFile(name, text, 'text/plain');
+  return `Saved ${name}.`;
+}
+
+/** Copies text to the clipboard. Returns whether it worked. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older browsers, or no permission: the old way, with a hidden text box.
+    try {
+      const box = document.createElement('textarea');
+      box.value = text;
+      box.style.position = 'fixed';
+      box.style.opacity = '0';
+      document.body.appendChild(box);
+      box.select();
+      const ok = document.execCommand('copy');
+      box.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getEngineVersion, type EngineVersion } from '../engine/version';
 import { canShareFiles } from '../history/files';
+import { ProblemReports } from '../problems/ProblemActions';
 
 export type HomeTarget = 'Setup' | 'Run' | 'Results' | 'Library';
 
@@ -107,6 +108,7 @@ export default function HomeScreen({ onGo, onBackup, onImportFile, backupMessage
           </p>
         )}
       </section>
+      <ProblemReports />
     </>
   );
 }

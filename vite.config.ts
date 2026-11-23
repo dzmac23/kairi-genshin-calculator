@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -6,8 +7,19 @@ import { VitePWA } from 'vite-plugin-pwa';
 // so every URL in the built app must start with that folder name.
 const base = '/kairi-genshin-calculator/';
 
+// Which build of the app this is, for problem reports: the build date and the code version.
+function appBuild(): string {
+  const date = new Date().toISOString().slice(0, 10);
+  try {
+    return `${date} (${execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()})`;
+  } catch {
+    return date;
+  }
+}
+
 export default defineConfig({
   base,
+  define: { __APP_BUILD__: JSON.stringify(appBuild()) },
   plugins: [
     react(),
     VitePWA({

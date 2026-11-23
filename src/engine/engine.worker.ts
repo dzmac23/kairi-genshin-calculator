@@ -87,6 +87,14 @@ async function handle(req: WorkerRequest): Promise<Omit<Extract<WorkerReply, { o
         }),
       };
     }
+    case 'tryFights': {
+      throwIfError(initializeWorker(req.config));
+      for (let i = 1; i <= req.fights; i++) {
+        const error = gcsimError(simulate());
+        if (error !== undefined) return { tried: i, failure: error };
+      }
+      return { tried: req.fights };
+    }
     case 'flush': {
       const flushed = flush();
       throwIfError(flushed);

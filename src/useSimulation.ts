@@ -4,6 +4,7 @@ import type { SimSettings } from './config/settings';
 import type { RotationText, Turn } from './rotation/notation';
 import type { Team } from './team/model';
 import { FPS, measureTiming, type RotationTiming } from './rotation/timing';
+import { addProblem } from './problems/log';
 
 export type SimState =
   | { phase: 'idle' }
@@ -17,6 +18,8 @@ export type SimState =
       isConfigError: boolean;
       /** Set when a fight failed partway through: how many fights had finished by then. */
       after?: { done: number; total: number };
+      /** The problem log entry for it (problems/log.ts). */
+      problemId?: string;
     };
 
 /** What a run was made from, saved with it in the History (see history/model.ts). */
@@ -59,6 +62,9 @@ export type TimingRequest = {
 const TIMING_REPLAYS = 10;
 
 const pool = new SimPool();
+
+/** A team without the saved stat working (long, and worked out again from the rest anyway). */
+export const stripBaselines = (team: unknown) => (Array.isArray(team) ? team.map((s) => (s && typeof s === 'object' ? { ...s, baseline: undefined } : s)) : team);
 
 /** Runs simulations and keeps track of where the current one is up to. */
 export function useSimulation() {
@@ -109,12 +115,17 @@ export function useSimulation() {
       if (error instanceof CancelledError) {
         setState({ phase: 'cancelled', progress: lastProgress.current });
       } else {
-        setState({
-          phase: 'error',
-          message: error instanceof Error ? error.message : String(error),
-          isConfigError: error instanceof ConfigError,
-          after: error instanceof ConfigError ? error.after : undefined,
-        });
+        const message = error instanceof Error ? error.message : String(error);
+        const after = error instanceof ConfigError ? error.after : undefined;
+        setState({ phase: 'error', message, isConfigError: error instanceof ConfigError, after });
+        // Kept in the problem log with what was run, so it can be sent as a report.
+        void addProblem({
+          kind: 'run',
+          where: 'Run',
+          message,
+          details: after ? `A fight failed after ${after.done} of ${after.total} had finished.` : error instanceof Error && !(error instanceof ConfigError) ? error.stack : undefined,
+          setup: { team: meta.team ? stripBaselines(meta.team) : undefined, rotation: meta.rotation, settings: meta.settings, config },
+        }).then((problemId) => setState((s) => (s.phase === 'error' && s.message === message ? { ...s, problemId } : s)));
       }
     }
   }, []);
