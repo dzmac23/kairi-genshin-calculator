@@ -306,8 +306,11 @@ export async function energyFights(config: string, seeds: string[]): Promise<str
   return (await onHelper({ type: 'energy', config, seeds })).energy ?? [];
 }
 
-/** Runs up to `fights` fights of a config on the helper engine, stopping at the first that fails. */
-export async function tryFights(config: string, fights: number): Promise<{ tried: number; failure?: string }> {
-  const r = await onHelper({ type: 'tryFights', config, fights });
-  return { tried: r.tried ?? 0, failure: r.failure };
+/**
+ * Runs up to `fights` fights of a config on the helper engine, stopping at the first that fails
+ * (or, with `countAll`, counting every failure).
+ */
+export async function tryFights(config: string, fights: number, countAll = false): Promise<{ tried: number; failures: number; failure?: string }> {
+  const r = await onHelper({ type: 'tryFights', config, fights, countAll });
+  return { tried: r.tried ?? 0, failures: r.failures ?? 0, failure: r.failure };
 }

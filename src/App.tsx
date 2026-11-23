@@ -343,7 +343,7 @@ export default function App() {
     if (!failureKey || !input || !data) return;
     let alive = true;
     setDiagnosis({ status: 'checking', done: 0, total: 1 });
-    diagnoseRun({ ...input, data, table: parsedTable }, tryFights, (done, total) => alive && setDiagnosis({ status: 'checking', done, total }))
+    diagnoseRun({ ...input, data, table: parsedTable, after: failure?.after }, tryFights, (done, total) => alive && setDiagnosis({ status: 'checking', done, total }))
       .then((d) => alive && setDiagnosis({ status: 'done', verdict: d.verdict }))
       .catch(() => alive && setDiagnosis({ status: 'failed' }));
     return () => {

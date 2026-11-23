@@ -24,10 +24,10 @@ export type WorkerRequest =
   | { id: number; type: 'snapshot'; config: string }
   /** Run one fight per seed with bursts that ignore energy, and send back the energy each burst had (src/energy). */
   | { id: number; type: 'energy'; config: string; seeds: string[] }
-  /** Run up to `fights` fights of a config, stopping at the first that fails (problems/diagnose.ts). */
-  | { id: number; type: 'tryFights'; config: string; fights: number };
+  /** Run up to `fights` fights of a config, stopping at the first that fails unless `countAll` (problems/diagnose.ts). */
+  | { id: number; type: 'tryFights'; config: string; fights: number; countAll?: boolean };
 
 export type WorkerReply =
-  | { id: number; ok: true; summary?: Uint8Array; result?: string; markers?: { frame: number; msg: string }[]; endFrame?: number; snapshot?: number[]; energy?: string[]; tried?: number; failure?: string }
+  | { id: number; ok: true; summary?: Uint8Array; result?: string; markers?: { frame: number; msg: string }[]; endFrame?: number; snapshot?: number[]; energy?: string[]; tried?: number; failures?: number; failure?: string }
   /** fatal means the engine in this worker has crashed and the worker must be replaced. */
   | { id: number; ok: false; error: string; fatal: boolean };
