@@ -1,0 +1,381 @@
+Hymn of the Maelstrom (5★ catalyst) for gcsim, from an unmerged gcsim pull request.
+
+Source: https://github.com/genshinsim/gcsim/pull/3282 by Lou Chauvin, at commit fbea026 (2026-11-22,
+        after "Remove unrelated changes"), based on gcsim main after "Add Starsealed Edict" (#3279).
+Not reviewed or accepted by gcsim's maintainers yet: results with this weapon are experimental.
+
+Only the weapon is taken: its folder (internal/weapons/catalyst/maelstrom) and its lines in gcsim's
+weapon lists (catalog, keys, shortcuts "hymnofthemaelstrom"/"maelstrom"/"hymnmaelstrom", imports,
+assets). The website files (ui/) are left out. One fix by this project: the Max HP and ATK buffs
+used one shared stat array, and gcsim adds every value of a buff's array to the full stats, so the
+healer also got the ATK bonus and the active character also got the Max HP bonus; each buff now has
+its own array. No other changes.
+
+This file is applied by scripts/build-gcsim.sh. When gcsim includes Hymn of the Maelstrom itself,
+the build skips it and says so; then delete this file.
+
+diff --git a/internal/services/assets/weapon.dm.go b/internal/services/assets/weapon.dm.go
+index 58e97d61..f3eb14e0 100644
+--- a/internal/services/assets/weapon.dm.go
++++ b/internal/services/assets/weapon.dm.go
+@@ -104,6 +104,7 @@ var weaponMap = map[string]string{
+ 	"hereticsmoltenblade":             "UI_EquipIcon_Sword_SerpentTooth_Awaken",
+ 	"huntersbow":                      "UI_EquipIcon_Bow_Hunters_Awaken",
+ 	"hunterspath":                     "UI_EquipIcon_Bow_Ayus_Awaken",
++	"hymnofthemaelstrom":              "UI_EquipIcon_Catalyst_Bludnye_Awaken",
+ 	"ibispiercer":                     "UI_EquipIcon_Bow_Ibis_Awaken",
+ 	"ironpoint":                       "UI_EquipIcon_Pole_Rod_Awaken",
+ 	"ironsting":                       "UI_EquipIcon_Sword_Exotic_Awaken",
+diff --git a/internal/weapons/catalyst/maelstrom/config.yml b/internal/weapons/catalyst/maelstrom/config.yml
+new file mode 100644
+index 00000000..68c8f462
+--- /dev/null
++++ b/internal/weapons/catalyst/maelstrom/config.yml
+@@ -0,0 +1,7 @@
++use: pipeline
++kind: weapon
++name: hymnofthemaelstrom
++
++shortcuts :
++  - maelstrom
++  - hymnmaelstrom
+diff --git a/internal/weapons/catalyst/maelstrom/hymnmaelstrom.go b/internal/weapons/catalyst/maelstrom/hymnmaelstrom.go
+new file mode 100644
+index 00000000..398a9021
+--- /dev/null
++++ b/internal/weapons/catalyst/maelstrom/hymnmaelstrom.go
+@@ -0,0 +1,160 @@
++package maelstrom
++
++import (
++	"fmt"
++
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/attributes"
++	"github.com/genshinsim/gcsim/pkg/core/event"
++	"github.com/genshinsim/gcsim/pkg/core/info"
++	"github.com/genshinsim/gcsim/pkg/core/player/character"
++	"github.com/genshinsim/gcsim/pkg/modifier"
++)
++
++const (
++	reactionBuffKey      = "maelstrom-reaction-boost"
++	reactionBuffDuration = 5 * 60
++)
++
++type Weapon struct {
++	Index int
++}
++
++func maelstromAtkBoost(maxHP float64, refine, count int) float64 {
++	multiplier := 0.75 + float64(refine)*0.25
++	intervals := max(0, min(int((maxHP-40000)/1000), 20))
++	boost := 0.004 * float64(intervals) * multiplier * float64(count)
++	return min(boost, 0.08*multiplier)
++}
++
++func (w *Weapon) SetIndex(idx int) { w.Index = idx }
++func (w *Weapon) Init() error      { return nil }
++
++// Increases Healing Bonus by 4%.
++//
++//	When performing healing, the equipping character gains the "Vatsamonga's Vatic Vintage"
++//
++// effect, which increases Max HP by 4% as well as increases the currently active party
++// member's ATK by 0.4% for every 1,000 Max HP the equipping character has over 40,000.
++// A maximum of 8% ATK can be gained in this way. This effect lasts 10s, max 3 stacks.
++// When a nearby party member triggers a Frozen or Stellar Swirl reaction, the aforementioned
++// Max HP and ATK boosts will be further increased by 75% for the next 5s.
++// The aforementioned effects can still trigger even when the equipping character is
++// not on the field.
++func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
++	w := &Weapon{}
++	multiplier := 0.75 + float64(p.Refine)*0.25
++	index := 0
++	hpboost := 0.04 * multiplier
++
++	atkcap := 0.08 * multiplier
++	stackKey := []string{
++		"maelstrom-stack-1",
++		"maelstrom-stack-2",
++		"maelstrom-stack-3",
++	}
++	atkBuffKey := fmt.Sprintf("maelstrom-ATK-%v", char.Base.Key.String())
++	// Separate stat arrays: gcsim adds every value of a mod's array to the full stats, so a shared
++	// array would give the HP buff's holder ATK and the ATK buff's holder Max HP.
++	mATK := make([]float64, attributes.EndStatType)
++	mHP := make([]float64, attributes.EndStatType)
++
++	updateAtkBuff := func(target *character.CharWrapper) {
++		duration := 0
++		count := 0
++		for _, key := range stackKey {
++			remaining := char.StatusDuration(key)
++			if remaining > 0 {
++				count++
++				duration = max(duration, remaining)
++			}
++		}
++		if count == 0 {
++			target.DeleteStatMod(atkBuffKey)
++			return
++		}
++
++		target.AddStatMod(character.StatMod{
++			Base:         modifier.NewBaseWithHitlag(atkBuffKey, duration),
++			AffectedStat: attributes.ATKP,
++			Amount: func() []float64 {
++				count := 0
++				for _, key := range stackKey {
++					if char.StatusIsActive(key) {
++						count++
++					}
++				}
++				boost := 1.0
++				if char.StatusIsActive(reactionBuffKey) {
++					boost = 1.75
++				}
++				mATK[attributes.ATKP] = min(maelstromAtkBoost(char.MaxHP(), p.Refine, count)*boost, atkcap*boost)
++				return mATK
++			},
++		})
++	}
++
++	mheal := make([]float64, attributes.EndStatType)
++	mheal[attributes.Heal] = 0.04 * multiplier
++	char.AddStatMod(character.StatMod{
++		Base:         modifier.NewBase("maelstrom-heal-bonus", -1),
++		AffectedStat: attributes.NoStat,
++		Amount: func() []float64 {
++			return mheal
++		},
++	})
++
++	onBoostReaction := func(args ...any) {
++		char.AddStatus(reactionBuffKey, reactionBuffDuration, true)
++	}
++	reactionSubKey := fmt.Sprintf("maelstrom-reaction-%v", char.Base.Key.String())
++	c.Events.Subscribe(event.OnFrozen, onBoostReaction, reactionSubKey)
++	c.Events.Subscribe(event.OnStellarSwirl, onBoostReaction, reactionSubKey)
++
++	c.Events.Subscribe(event.OnCharacterSwap, func(args ...any) {
++		prev := args[0].(int)
++		next := args[1].(int)
++		c.Player.ByIndex(prev).DeleteStatMod(atkBuffKey)
++		updateAtkBuff(c.Player.ByIndex(next))
++	}, fmt.Sprintf("maelstrom-swap-%v", char.Base.Key.String()))
++
++	c.Events.Subscribe(event.OnHeal, func(args ...any) {
++		source := args[0].(*info.HealInfo)
++		amount := args[2].(float64)
++		// check if the wearer realises the heal
++		if source.Caller != char.Index() {
++			return
++		}
++		if amount <= 0 {
++			return
++		}
++		// add status to char given index
++		char.AddStatus(stackKey[index], 600, true)
++		// update buff
++		char.AddStatMod(character.StatMod{
++			Base:         modifier.NewBaseWithHitlag("maelstrom-HP", 600),
++			AffectedStat: attributes.HPP,
++			Amount: func() []float64 {
++				count := 0
++				for _, v := range stackKey {
++					if char.StatusIsActive(v) {
++						count++
++					}
++				}
++				boost := 1.0
++				if char.StatusIsActive(reactionBuffKey) {
++					boost = 1.75
++				}
++				mHP[attributes.HPP] = hpboost * float64(count) * boost
++				return mHP
++			},
++		})
++		updateAtkBuff(c.Player.ActiveChar())
++		index++
++		if index == 3 {
++			index = 0
++		}
++	}, fmt.Sprintf("maelstrom-%v", char.Base.Key.String()))
++
++	return w, nil
++}
+diff --git a/internal/weapons/catalyst/maelstrom/zz_hymnofthemaelstrom.dm.go b/internal/weapons/catalyst/maelstrom/zz_hymnofthemaelstrom.dm.go
+new file mode 100644
+index 00000000..b48918c3
+--- /dev/null
++++ b/internal/weapons/catalyst/maelstrom/zz_hymnofthemaelstrom.dm.go
+@@ -0,0 +1,23 @@
++// Code generated by "pipeline"; DO NOT EDIT.
++
++// passive: Rondo of Slumber # Weapon_Catalyst_Bludnye
++//
++//	Increases Healing Bonus by 4%.
++//	When performing healing, the equipping character gains the "Vatsamonga's Vatic Vintage"
++//	effect, which increases Max HP by 4% as well as increases the currently active party
++//	member's ATK by 0.4% for every 1,000 Max HP the equipping character has over 40,000.
++//	A maximum of 8% ATK can be gained in this way. This effect lasts 10s, max 3 stacks.
++//	When a nearby party member triggers a Frozen or Stellar Swirl reaction, the aforementioned
++//	Max HP and ATK boosts will be further increased by 75% for the next 5s.
++//	The aforementioned effects can still trigger even when the equipping character is
++//	not on the field.
++package maelstrom
++
++import (
++	"github.com/genshinsim/gcsim/pkg/core"
++	"github.com/genshinsim/gcsim/pkg/core/keys"
++)
++
++func init() {
++	core.RegisterWeaponFunc(keys.HymnOfTheMaelstrom, NewWeapon)
++}
+diff --git a/pkg/catalog/weapon.dm.go b/pkg/catalog/weapon.dm.go
+index 9f81fe22..a848a6f2 100644
+--- a/pkg/catalog/weapon.dm.go
++++ b/pkg/catalog/weapon.dm.go
+@@ -7996,6 +7996,86 @@ var WeaponMap = map[keys.Weapon]*model.WeaponData{
+ 			},
+ 		},
+ 	},
++	keys.HymnOfTheMaelstrom: {
++		Id:          14524,
++		Key:         "hymnofthemaelstrom",
++		Rarity:      5,
++		WeaponClass: model.WeaponType_WEAPON_CATALYST,
++		ImageName:   "UI_EquipIcon_Catalyst_Bludnye_Awaken",
++		BaseStats: &model.WeaponStatsData{
++			BaseProps: []*model.WeaponProp{
++				{
++					PropType:     model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++					InitialValue: 44.3358,
++					Curve:        model.GrowCurveType_GROW_CURVE_ATTACK_304,
++				},
++				{
++					PropType:     model.FightPropType_FIGHT_PROP_HP_PERCENT,
++					InitialValue: 0.144,
++					Curve:        model.GrowCurveType_GROW_CURVE_CRITICAL_301,
++				},
++			},
++			PromoData: []*model.PromotionData{
++				{
++					MaxLevel: 20,
++				},
++				{
++					MaxLevel: 40,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    31.1,
++						},
++					},
++				},
++				{
++					MaxLevel: 50,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    62.2,
++						},
++					},
++				},
++				{
++					MaxLevel: 60,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    93.4,
++						},
++					},
++				},
++				{
++					MaxLevel: 70,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    124.5,
++						},
++					},
++				},
++				{
++					MaxLevel: 80,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    155.6,
++						},
++					},
++				},
++				{
++					MaxLevel: 90,
++					AddProps: []*model.PromotionAddProp{
++						{
++							PropType: model.FightPropType_FIGHT_PROP_BASE_ATTACK,
++							Value:    186.7,
++						},
++					},
++				},
++			},
++		},
++	},
+ 	keys.IbisPiercer: {
+ 		Id:          15419,
+ 		Key:         "ibispiercer",
+diff --git a/pkg/core/keys/weapon.dm.go b/pkg/core/keys/weapon.dm.go
+index b6e67cbd..5121af06 100644
+--- a/pkg/core/keys/weapon.dm.go
++++ b/pkg/core/keys/weapon.dm.go
+@@ -144,6 +144,7 @@ const (
+ 	HereticsMoltenBlade                           // hereticsmoltenblade
+ 	HuntersBow                                    // huntersbow
+ 	HuntersPath                                   // hunterspath
++	HymnOfTheMaelstrom                            // hymnofthemaelstrom
+ 	IbisPiercer                                   // ibispiercer
+ 	IronPoint                                     // ironpoint
+ 	IronSting                                     // ironsting
+@@ -401,6 +402,7 @@ var _WeaponNames = [...]string{
+ 	"hereticsmoltenblade",
+ 	"huntersbow",
+ 	"hunterspath",
++	"hymnofthemaelstrom",
+ 	"ibispiercer",
+ 	"ironpoint",
+ 	"ironsting",
+@@ -658,6 +660,7 @@ var _WeaponValues = [...]Weapon{
+ 	HereticsMoltenBlade,
+ 	HuntersBow,
+ 	HuntersPath,
++	HymnOfTheMaelstrom,
+ 	IbisPiercer,
+ 	IronPoint,
+ 	IronSting,
+diff --git a/pkg/shortcut/weapon.dm.go b/pkg/shortcut/weapon.dm.go
+index 10e30abd..547ca197 100644
+--- a/pkg/shortcut/weapon.dm.go
++++ b/pkg/shortcut/weapon.dm.go
+@@ -179,6 +179,9 @@ var WeaponNameToKey = map[string]keys.Weapon{
+ 	"hmb":                             keys.HereticsMoltenBlade,
+ 	"huntersbow":                      keys.HuntersBow,
+ 	"hunterspath":                     keys.HuntersPath,
++	"hymnofthemaelstrom":              keys.HymnOfTheMaelstrom,
++	"hymnmaelstrom":                   keys.HymnOfTheMaelstrom,
++	"maelstrom":                       keys.HymnOfTheMaelstrom,
+ 	"ibispiercer":                     keys.IbisPiercer,
+ 	"ibis":                            keys.IbisPiercer,
+ 	"ironpoint":                       keys.IronPoint,
+diff --git a/pkg/simulation/imports.weapon.dm.go b/pkg/simulation/imports.weapon.dm.go
+index fc66564f..05dae334 100644
+--- a/pkg/simulation/imports.weapon.dm.go
++++ b/pkg/simulation/imports.weapon.dm.go
+@@ -76,6 +76,7 @@ import (
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/hakushin"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/jadefallssplendor"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/kagura"
++	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/maelstrom"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/magicguide"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/mappa"
+ 	_ "github.com/genshinsim/gcsim/internal/weapons/catalyst/memory"

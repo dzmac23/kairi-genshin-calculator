@@ -186,6 +186,39 @@ describe.skipIf(!hasEngine)('app-built configs in the real gcsim engine', { time
     expect(withEdict[10] - withJade[10]).toBeCloseTo(substat + passiveR1, 4);
   });
 
+  it.skipIf(!enginePatches.includes('hymn'))('simulates Hymn of the Maelstrom from patches/hymn.patch', () => {
+    const snapshot = (weapon: string) => {
+      const team = placeholderTeam(data);
+      team[0] = { ...team[0], weapon };
+      const plan = { opener: '', loop: 'Neuvillette tE > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q > Neuvillette C tE Q C2' };
+      const built = buildConfig(team, data, plan, table, DEFAULT_SETTINGS, 1);
+      expect(built.problems).toEqual([]);
+      const out = JSON.parse(sample(built.config!, '1'));
+      expect(out.error).toBeUndefined();
+      return out.character_details[0].snapshot as number[];
+    };
+    // At the start of a fight (no healing yet) Hymn gives its HP% substat and "Increases Healing
+    // Bonus by 4%" at R1, and nothing else: Sacrificial Jade has a CRIT Rate substat instead.
+    const hymn = data.weapon.get('Hymn of the Maelstrom')!;
+    const substat = hymn.stats.find((x) => x.level === '90')!.substat_value!;
+    const [withHymn, withJade] = [snapshot(hymn.name), snapshot(placeholderTeam(data)[0].weapon!)];
+    expect(withHymn[11] - withJade[11]).toBeCloseTo(parseFloat(hymn.refinement_values![0][0]) / 100, 4); // Healing Bonus
+    // The snapshot folds percentages into totals (index 3 = Max HP): the HP% substat adds base HP × substat.
+    const baseHp = data.character.get('Neuvillette')!.stats.find((x) => x.level === '90')!.base_hp;
+    expect(withHymn[3] - withJade[3]).toBeCloseTo(baseHp * substat, -1); // within ~5 HP
+
+    // A healer wearing it: Kokomi's skill heals, which stacks the HP and ATK buffs.
+    const team = placeholderTeam(data);
+    team[0] = { ...team[0], character: 'Sangonomiya Kokomi', weapon: hymn.name };
+    const built = buildConfig(team, data, { opener: '', loop: 'Kokomi E Q N3 > Kazuha tE P > Furina tE d Q > Xilonen E N5 Q' }, table, DEFAULT_SETTINGS, 20);
+    expect(built.problems).toEqual([]);
+    expect(error(initializeAggregator(built.config!))).toBeUndefined();
+    expect(initializeWorker(built.config!)).toBeNull();
+    for (let i = 0; i < 20; i++) aggregate(simulate() as Uint8Array);
+    const result = JSON.parse((flush() as { result: string }).result);
+    expect(result.statistics.character_dps[0].mean).toBeGreaterThan(0);
+  });
+
   it('runs the special-character codes: Kinich E L E fires the cannon, Mualani E M N lands the Surging Bite', () => {
     const team = placeholderTeam(data);
     const weapon = (key: string) => data.weapons.find((w) => w.gcsim_key === key)!.name;

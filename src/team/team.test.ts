@@ -61,7 +61,10 @@ describe('gcsim v2.50.0 support', () => {
     const files = readdirSync('patches').filter((f) => f.endsWith('.patch')).map((f) => f.replace('.patch', '')).filter((f) => !ENGINE_ADDITIONS.includes(f));
     const owners = [...data.characters, ...data.weapons].filter((x) => x.gcsim_patch).map((x) => x.gcsim_patch);
     expect(files.sort()).toEqual(owners.sort());
-    expect(data.weapons.filter((w) => w.gcsim_patch).map((w) => `${w.name}: patches/${w.gcsim_patch}.patch`)).toEqual(['Starsealed Edict: patches/starsealed.patch']);
+    expect(data.weapons.filter((w) => w.gcsim_patch).map((w) => `${w.name}: patches/${w.gcsim_patch}.patch`)).toEqual([
+      'Hymn of the Maelstrom: patches/hymn.patch',
+      'Starsealed Edict: patches/starsealed.patch',
+    ]);
   });
 
   it('warns that a patched weapon is experimental, without blocking a run', () => {
