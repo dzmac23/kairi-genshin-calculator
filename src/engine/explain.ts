@@ -12,7 +12,7 @@ const EXPLANATIONS: { pattern: RegExp; text: string }[] = [
   { pattern: /player must use low_plunge or high_plunge while airborne/i, text: "After a jump during Xianyun's burst the character is in the air, so the next move must be a plunge (J P)." },
   { pattern: /cannot low_plunge after skill/i, text: "Kazuha's plunge after his skill must be a high plunge: write P, not lP." },
   { pattern: /low_plunge can only be used after hold skill/i, text: 'Chiori can only low plunge right after a hold skill: hE lP.' },
-  { pattern: /(low|high)_plunge can only be used (after charge or )?while airborne/i, text: "This character can only plunge while in the air, which needs Xianyun's burst (then J P), or their own special plunge." },
+  { pattern: /(low|high)_plunge can only be used (after charge or )?while airborne/i, text: "This character can only plunge while in the air, which needs Xianyun's burst (then J P), or their own special plunge. If Xianyun is in the team, her burst had already ended by this plunge: it came too late." },
   { pattern: /only plunge after skill ends/i, text: 'This plunge only works right after the character ends their Nightsoul / Windfavored state with their skill.' },
   { pattern: /Cannot early cancel/i, text: 'After a shortened Charged Attack or burst, the next move must be a dash or jump (or skill/burst for Neuvillette). Add D before the next move, or remove the shortening option.' },
   { pattern: /Cannot use Skill Hold without Dew/i, text: "Lauma's hold skill needs a Verdant Dew (from Lunar-Bloom). Use tE, or make sure the team creates Dew first." },
